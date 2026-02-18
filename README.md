@@ -13,3 +13,7 @@ Early scaffold phase. Core architecture + step-by-step implementation plan:
 1. Async-first layered client (`v0.1.0`)
 2. Full PCB read surface + trace write capability (`v0.1.0`)
 3. Blocking wrapper parity (`v0.2.0`)
+
+## Local Testing
+
+- CLI runbook: `/Users/milindsharma/Developer/kicad-oss/kicad-ipc-rust/docs/TEST_CLI.md`
