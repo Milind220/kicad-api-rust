@@ -1,2 +1,2 @@
-# kicad-api-rust
-MIT licensed, fully updated, actively maintained Rust bindings for the KiCAD IPC API 
+# KiCAD IPC API Rust
+MIT licensed, entirely up-to-date, actively maintained Rust bindings for the KiCAD IPC API
