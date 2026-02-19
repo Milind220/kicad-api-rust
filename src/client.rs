@@ -9,8 +9,8 @@ use crate::model::board::{
     BoardEnabledLayers, BoardLayerInfo, BoardNet, BoardOriginKind, PadNetEntry, Vector2Nm,
 };
 use crate::model::common::{
-    DocumentSpecifier, DocumentType, ProjectInfo, SelectionItemDetail, SelectionSummary,
-    SelectionTypeCount, VersionInfo,
+    DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, ProjectInfo,
+    SelectionItemDetail, SelectionSummary, SelectionTypeCount, VersionInfo,
 };
 use crate::proto::kiapi::board::commands as board_commands;
 use crate::proto::kiapi::board::types as board_types;
@@ -31,6 +31,9 @@ const CMD_GET_VISIBLE_LAYERS: &str = "kiapi.board.commands.GetVisibleLayers";
 const CMD_GET_BOARD_ORIGIN: &str = "kiapi.board.commands.GetBoardOrigin";
 const CMD_GET_SELECTION: &str = "kiapi.common.commands.GetSelection";
 const CMD_GET_ITEMS: &str = "kiapi.common.commands.GetItems";
+const CMD_GET_ITEMS_BY_ID: &str = "kiapi.common.commands.GetItemsById";
+const CMD_GET_BOUNDING_BOX: &str = "kiapi.common.commands.GetBoundingBox";
+const CMD_HIT_TEST: &str = "kiapi.common.commands.HitTest";
 
 const RES_GET_VERSION: &str = "kiapi.common.commands.GetVersionResponse";
 const RES_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocumentsResponse";
@@ -41,6 +44,8 @@ const RES_BOARD_LAYERS: &str = "kiapi.board.commands.BoardLayers";
 const RES_VECTOR2: &str = "kiapi.common.types.Vector2";
 const RES_SELECTION_RESPONSE: &str = "kiapi.common.commands.SelectionResponse";
 const RES_GET_ITEMS_RESPONSE: &str = "kiapi.common.commands.GetItemsResponse";
+const RES_GET_BOUNDING_BOX_RESPONSE: &str = "kiapi.common.commands.GetBoundingBoxResponse";
+const RES_HIT_TEST_RESPONSE: &str = "kiapi.common.commands.HitTestResponse";
 
 #[derive(Clone, Debug)]
 pub struct KiCadClient {
@@ -318,13 +323,8 @@ impl KiCadClient {
     }
 
     pub async fn get_selection_raw(&self) -> Result<Vec<prost_types::Any>, KiCadError> {
-        let document = self.current_board_document_proto().await?;
         let command = common_commands::GetSelection {
-            header: Some(common_types::ItemHeader {
-                document: Some(document),
-                container: None,
-                field_mask: None,
-            }),
+            header: Some(self.current_board_item_header().await?),
             types: Vec::new(),
         };
 
@@ -340,19 +340,7 @@ impl KiCadClient {
 
     pub async fn get_selection_details(&self) -> Result<Vec<SelectionItemDetail>, KiCadError> {
         let items = self.get_selection_raw().await?;
-        let mut details = Vec::with_capacity(items.len());
-        for item in items {
-            let raw_len = item.value.len();
-            let type_url = item.type_url.clone();
-            let detail = selection_item_detail(&item)?;
-            details.push(SelectionItemDetail {
-                type_url,
-                detail,
-                raw_len,
-            });
-        }
-
-        Ok(details)
+        summarize_item_details(items)
     }
 
     pub async fn get_pad_netlist(&self) -> Result<Vec<PadNetEntry>, KiCadError> {
@@ -360,6 +348,101 @@ impl KiCadClient {
             .get_items_raw(vec![common_types::KiCadObjectType::KotPcbFootprint as i32])
             .await?;
         pad_netlist_from_footprint_items(footprint_items)
+    }
+
+    pub async fn get_items_by_id_raw(
+        &self,
+        item_ids: Vec<String>,
+    ) -> Result<Vec<prost_types::Any>, KiCadError> {
+        if item_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let command = common_commands::GetItemsById {
+            header: Some(self.current_board_item_header().await?),
+            items: item_ids
+                .into_iter()
+                .map(|id| common_types::Kiid { value: id })
+                .collect(),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_ITEMS_BY_ID))
+            .await?;
+
+        let payload: common_commands::GetItemsResponse =
+            envelope::unpack_any(&response, RES_GET_ITEMS_RESPONSE)?;
+
+        ensure_item_request_ok(payload.status)?;
+        Ok(payload.items)
+    }
+
+    pub async fn get_items_by_id_details(
+        &self,
+        item_ids: Vec<String>,
+    ) -> Result<Vec<SelectionItemDetail>, KiCadError> {
+        let items = self.get_items_by_id_raw(item_ids).await?;
+        summarize_item_details(items)
+    }
+
+    pub async fn get_item_bounding_boxes(
+        &self,
+        item_ids: Vec<String>,
+        include_child_text: bool,
+    ) -> Result<Vec<ItemBoundingBox>, KiCadError> {
+        if item_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mode = if include_child_text {
+            common_commands::BoundingBoxMode::BbmItemAndChildText
+        } else {
+            common_commands::BoundingBoxMode::BbmItemOnly
+        };
+
+        let command = common_commands::GetBoundingBox {
+            header: Some(self.current_board_item_header().await?),
+            items: item_ids
+                .into_iter()
+                .map(|id| common_types::Kiid { value: id })
+                .collect(),
+            mode: mode as i32,
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_BOUNDING_BOX))
+            .await?;
+
+        let payload: common_commands::GetBoundingBoxResponse =
+            envelope::unpack_any(&response, RES_GET_BOUNDING_BOX_RESPONSE)?;
+
+        map_item_bounding_boxes(payload.items, payload.boxes)
+    }
+
+    pub async fn hit_test_item(
+        &self,
+        item_id: String,
+        position: Vector2Nm,
+        tolerance_nm: i32,
+    ) -> Result<ItemHitTestResult, KiCadError> {
+        let command = common_commands::HitTest {
+            header: Some(self.current_board_item_header().await?),
+            id: Some(common_types::Kiid { value: item_id }),
+            position: Some(common_types::Vector2 {
+                x_nm: position.x_nm,
+                y_nm: position.y_nm,
+            }),
+            tolerance: tolerance_nm,
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_HIT_TEST))
+            .await?;
+
+        let payload: common_commands::HitTestResponse =
+            envelope::unpack_any(&response, RES_HIT_TEST_RESPONSE)?;
+
+        Ok(map_hit_test_result(payload.result))
     }
 
     async fn send_command(
@@ -406,14 +489,17 @@ impl KiCadClient {
         Ok(model_document_to_proto(selected))
     }
 
+    async fn current_board_item_header(&self) -> Result<common_types::ItemHeader, KiCadError> {
+        Ok(common_types::ItemHeader {
+            document: Some(self.current_board_document_proto().await?),
+            container: None,
+            field_mask: None,
+        })
+    }
+
     async fn get_items_raw(&self, types: Vec<i32>) -> Result<Vec<prost_types::Any>, KiCadError> {
-        let document = self.current_board_document_proto().await?;
         let command = common_commands::GetItems {
-            header: Some(common_types::ItemHeader {
-                document: Some(document),
-                container: None,
-                field_mask: None,
-            }),
+            header: Some(self.current_board_item_header().await?),
             types,
         };
 
@@ -424,15 +510,7 @@ impl KiCadClient {
         let payload: common_commands::GetItemsResponse =
             envelope::unpack_any(&response, RES_GET_ITEMS_RESPONSE)?;
 
-        let request_status = common_types::ItemRequestStatus::try_from(payload.status)
-            .unwrap_or(common_types::ItemRequestStatus::IrsUnknown);
-
-        if request_status != common_types::ItemRequestStatus::IrsOk {
-            return Err(KiCadError::ItemStatus {
-                code: request_status.as_str_name().to_string(),
-            });
-        }
-
+        ensure_item_request_ok(payload.status)?;
         Ok(payload.items)
     }
 }
@@ -519,6 +597,73 @@ fn summarize_selection(items: Vec<prost_types::Any>) -> SelectionSummary {
             .into_iter()
             .map(|(type_url, count)| SelectionTypeCount { type_url, count })
             .collect(),
+    }
+}
+
+fn summarize_item_details(
+    items: Vec<prost_types::Any>,
+) -> Result<Vec<SelectionItemDetail>, KiCadError> {
+    let mut details = Vec::with_capacity(items.len());
+    for item in items {
+        let raw_len = item.value.len();
+        let type_url = item.type_url.clone();
+        let detail = selection_item_detail(&item)?;
+        details.push(SelectionItemDetail {
+            type_url,
+            detail,
+            raw_len,
+        });
+    }
+
+    Ok(details)
+}
+
+fn ensure_item_request_ok(status: i32) -> Result<(), KiCadError> {
+    let request_status = common_types::ItemRequestStatus::try_from(status)
+        .unwrap_or(common_types::ItemRequestStatus::IrsUnknown);
+
+    if request_status != common_types::ItemRequestStatus::IrsOk {
+        return Err(KiCadError::ItemStatus {
+            code: request_status.as_str_name().to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn map_item_bounding_boxes(
+    item_ids: Vec<common_types::Kiid>,
+    boxes: Vec<common_types::Box2>,
+) -> Result<Vec<ItemBoundingBox>, KiCadError> {
+    let mut mapped = Vec::with_capacity(item_ids.len().min(boxes.len()));
+    for (item_id, bbox) in item_ids.into_iter().zip(boxes.into_iter()) {
+        let position = bbox.position.ok_or_else(|| KiCadError::InvalidResponse {
+            reason: format!("missing bounding-box position for item `{}`", item_id.value),
+        })?;
+        let size = bbox.size.ok_or_else(|| KiCadError::InvalidResponse {
+            reason: format!("missing bounding-box size for item `{}`", item_id.value),
+        })?;
+
+        mapped.push(ItemBoundingBox {
+            item_id: item_id.value,
+            x_nm: position.x_nm,
+            y_nm: position.y_nm,
+            width_nm: size.x_nm,
+            height_nm: size.y_nm,
+        });
+    }
+
+    Ok(mapped)
+}
+
+fn map_hit_test_result(value: i32) -> ItemHitTestResult {
+    let result = common_commands::HitTestResult::try_from(value)
+        .unwrap_or(common_commands::HitTestResult::HtrUnknown);
+
+    match result {
+        common_commands::HitTestResult::HtrHit => ItemHitTestResult::Hit,
+        common_commands::HitTestResult::HtrNoHit => ItemHitTestResult::NoHit,
+        common_commands::HitTestResult::HtrUnknown => ItemHitTestResult::Unknown,
     }
 }
 
@@ -789,9 +934,10 @@ fn default_client_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        layer_to_model, model_document_to_proto, normalize_socket_uri,
-        pad_netlist_from_footprint_items, select_single_board_document, select_single_project_path,
-        selection_item_detail, summarize_selection,
+        ensure_item_request_ok, layer_to_model, map_hit_test_result, map_item_bounding_boxes,
+        model_document_to_proto, normalize_socket_uri, pad_netlist_from_footprint_items,
+        select_single_board_document, select_single_project_path, selection_item_detail,
+        summarize_item_details, summarize_selection,
     };
     use crate::error::KiCadError;
     use crate::model::common::{DocumentSpecifier, DocumentType, ProjectInfo};
@@ -1071,5 +1217,68 @@ mod tests {
         assert_eq!(entry.footprint_reference.as_deref(), Some("P1"));
         assert_eq!(entry.pad_number, "1");
         assert_eq!(entry.net_code, Some(5));
+    }
+
+    #[test]
+    fn ensure_item_request_ok_accepts_ok_and_rejects_non_ok() {
+        assert!(ensure_item_request_ok(
+            crate::proto::kiapi::common::types::ItemRequestStatus::IrsOk as i32
+        )
+        .is_ok());
+
+        assert!(ensure_item_request_ok(
+            crate::proto::kiapi::common::types::ItemRequestStatus::IrsDocumentNotFound as i32
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn summarize_item_details_reports_unknown_payload_as_unparsed() {
+        let items = vec![prost_types::Any {
+            type_url: "type.googleapis.com/kiapi.board.types.UnknownThing".to_string(),
+            value: vec![1, 2, 3, 4],
+        }];
+
+        let details =
+            summarize_item_details(items).expect("unknown types should still produce detail rows");
+        assert_eq!(details.len(), 1);
+        assert!(details[0].detail.contains("unparsed payload"));
+        assert_eq!(details[0].raw_len, 4);
+    }
+
+    #[test]
+    fn map_item_bounding_boxes_maps_ids_and_dimensions() {
+        let ids = vec![crate::proto::kiapi::common::types::Kiid {
+            value: "id-1".to_string(),
+        }];
+        let boxes = vec![crate::proto::kiapi::common::types::Box2 {
+            position: Some(crate::proto::kiapi::common::types::Vector2 { x_nm: 10, y_nm: 20 }),
+            size: Some(crate::proto::kiapi::common::types::Vector2 { x_nm: 30, y_nm: 40 }),
+        }];
+
+        let mapped = map_item_bounding_boxes(ids, boxes)
+            .expect("box mapping should succeed when position and size are present");
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].item_id, "id-1");
+        assert_eq!(mapped[0].x_nm, 10);
+        assert_eq!(mapped[0].y_nm, 20);
+        assert_eq!(mapped[0].width_nm, 30);
+        assert_eq!(mapped[0].height_nm, 40);
+    }
+
+    #[test]
+    fn map_hit_test_result_covers_known_variants() {
+        assert_eq!(
+            map_hit_test_result(
+                crate::proto::kiapi::common::commands::HitTestResult::HtrHit as i32
+            ),
+            crate::model::common::ItemHitTestResult::Hit
+        );
+        assert_eq!(
+            map_hit_test_result(
+                crate::proto::kiapi::common::commands::HitTestResult::HtrNoHit as i32
+            ),
+            crate::model::common::ItemHitTestResult::NoHit
+        );
     }
 }

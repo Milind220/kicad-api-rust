@@ -101,6 +101,30 @@ Show pad-level netlist entries (footprint/pad/net):
 cargo run --bin kicad-ipc-cli -- netlist-pads
 ```
 
+Show parsed details for specific item IDs:
+
+```bash
+cargo run --bin kicad-ipc-cli -- items-by-id --id <uuid> --id <uuid>
+```
+
+Show item bounding boxes:
+
+```bash
+cargo run --bin kicad-ipc-cli -- item-bbox --id <uuid>
+```
+
+Include child text in the bounding box (for items such as footprints):
+
+```bash
+cargo run --bin kicad-ipc-cli -- item-bbox --id <uuid> --include-text
+```
+
+Run hit-test on a specific item:
+
+```bash
+cargo run --bin kicad-ipc-cli -- hit-test --id <uuid> --x-nm <x> --y-nm <y> --tolerance-nm 0
+```
+
 Get current project path (derived from open PCB docs):
 
 ```bash

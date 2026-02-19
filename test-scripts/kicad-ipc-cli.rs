@@ -2,7 +2,7 @@ use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
 
-use kicad_ipc::{BoardOriginKind, ClientBuilder, DocumentType, KiCadError};
+use kicad_ipc::{BoardOriginKind, ClientBuilder, DocumentType, KiCadError, Vector2Nm};
 
 #[derive(Debug)]
 struct CliConfig {
@@ -15,18 +15,35 @@ struct CliConfig {
 enum Command {
     Ping,
     Version,
-    OpenDocs { document_type: DocumentType },
+    OpenDocs {
+        document_type: DocumentType,
+    },
     ProjectPath,
     BoardOpen,
     Nets,
     EnabledLayers,
     ActiveLayer,
     VisibleLayers,
-    BoardOrigin { kind: BoardOriginKind },
+    BoardOrigin {
+        kind: BoardOriginKind,
+    },
     SelectionSummary,
     SelectionDetails,
     SelectionRaw,
     NetlistPads,
+    ItemsById {
+        item_ids: Vec<String>,
+    },
+    ItemBBox {
+        item_ids: Vec<String>,
+        include_child_text: bool,
+    },
+    HitTest {
+        item_id: String,
+        x_nm: i64,
+        y_nm: i64,
+        tolerance_nm: i32,
+    },
     Smoke,
     Help,
 }
@@ -209,6 +226,42 @@ async fn run() -> Result<(), KiCadError> {
                 );
             }
         }
+        Command::ItemsById { item_ids } => {
+            let details = client.get_items_by_id_details(item_ids).await?;
+            println!("items_total={}", details.len());
+            for (index, item) in details.iter().enumerate() {
+                println!(
+                    "[{index}] type_url={} raw_len={} detail={}",
+                    item.type_url, item.raw_len, item.detail
+                );
+            }
+        }
+        Command::ItemBBox {
+            item_ids,
+            include_child_text,
+        } => {
+            let boxes = client
+                .get_item_bounding_boxes(item_ids, include_child_text)
+                .await?;
+            println!("bbox_total={}", boxes.len());
+            for entry in boxes {
+                println!(
+                    "item_id={} x_nm={} y_nm={} width_nm={} height_nm={}",
+                    entry.item_id, entry.x_nm, entry.y_nm, entry.width_nm, entry.height_nm
+                );
+            }
+        }
+        Command::HitTest {
+            item_id,
+            x_nm,
+            y_nm,
+            tolerance_nm,
+        } => {
+            let result = client
+                .hit_test_item(item_id, Vector2Nm { x_nm, y_nm }, tolerance_nm)
+                .await?;
+            println!("hit_test={result}");
+        }
         Command::Smoke => {
             client.ping().await?;
             let version = client.get_version().await?;
@@ -300,6 +353,105 @@ fn parse_args() -> Result<(CliConfig, Command), KiCadError> {
         "selection-details" => Command::SelectionDetails,
         "selection-raw" => Command::SelectionRaw,
         "netlist-pads" => Command::NetlistPads,
+        "items-by-id" => {
+            let item_ids = parse_item_ids(&args[1..], "items-by-id")?;
+            Command::ItemsById { item_ids }
+        }
+        "item-bbox" => {
+            let mut item_ids = Vec::new();
+            let mut include_child_text = false;
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--id" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for item-bbox --id".to_string(),
+                        })?;
+                        item_ids.push(value.clone());
+                        i += 2;
+                    }
+                    "--include-text" => {
+                        include_child_text = true;
+                        i += 1;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
+
+            if item_ids.is_empty() {
+                return Err(KiCadError::Config {
+                    reason: "item-bbox requires one or more `--id <uuid>` arguments".to_string(),
+                });
+            }
+
+            Command::ItemBBox {
+                item_ids,
+                include_child_text,
+            }
+        }
+        "hit-test" => {
+            let mut item_id = None;
+            let mut x_nm = None;
+            let mut y_nm = None;
+            let mut tolerance_nm = 0_i32;
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--id" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for hit-test --id".to_string(),
+                        })?;
+                        item_id = Some(value.clone());
+                        i += 2;
+                    }
+                    "--x-nm" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for hit-test --x-nm".to_string(),
+                        })?;
+                        x_nm = Some(value.parse::<i64>().map_err(|err| KiCadError::Config {
+                            reason: format!("invalid hit-test --x-nm `{value}`: {err}"),
+                        })?);
+                        i += 2;
+                    }
+                    "--y-nm" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for hit-test --y-nm".to_string(),
+                        })?;
+                        y_nm = Some(value.parse::<i64>().map_err(|err| KiCadError::Config {
+                            reason: format!("invalid hit-test --y-nm `{value}`: {err}"),
+                        })?);
+                        i += 2;
+                    }
+                    "--tolerance-nm" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for hit-test --tolerance-nm".to_string(),
+                        })?;
+                        tolerance_nm = value.parse::<i32>().map_err(|err| KiCadError::Config {
+                            reason: format!("invalid hit-test --tolerance-nm `{value}`: {err}"),
+                        })?;
+                        i += 2;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
+
+            Command::HitTest {
+                item_id: item_id.ok_or_else(|| KiCadError::Config {
+                    reason: "hit-test requires `--id <uuid>`".to_string(),
+                })?,
+                x_nm: x_nm.ok_or_else(|| KiCadError::Config {
+                    reason: "hit-test requires `--x-nm <value>`".to_string(),
+                })?,
+                y_nm: y_nm.ok_or_else(|| KiCadError::Config {
+                    reason: "hit-test requires `--y-nm <value>`".to_string(),
+                })?,
+                tolerance_nm,
+            }
+        }
         "smoke" => Command::Smoke,
         "open-docs" => {
             let mut document_type = DocumentType::Pcb;
@@ -338,8 +490,32 @@ fn default_config() -> CliConfig {
 
 fn print_help() {
     println!(
-        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  enabled-layers               List enabled board layers\n  active-layer                 Show active board layer\n  visible-layers               Show currently visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
+        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  enabled-layers               List enabled board layers\n  active-layer                 Show active board layer\n  visible-layers               Show currently visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
     );
+}
+
+fn parse_item_ids(args: &[String], command_name: &str) -> Result<Vec<String>, KiCadError> {
+    let mut item_ids = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--id" {
+            let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                reason: format!("missing value for {command_name} --id"),
+            })?;
+            item_ids.push(value.clone());
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+
+    if item_ids.is_empty() {
+        return Err(KiCadError::Config {
+            reason: format!("{command_name} requires one or more `--id <uuid>` arguments"),
+        });
+    }
+
+    Ok(item_ids)
 }
 
 fn bytes_to_hex(data: &[u8]) -> String {

@@ -111,3 +111,31 @@ pub struct SelectionItemDetail {
     pub detail: String,
     pub raw_len: usize,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ItemBoundingBox {
+    pub item_id: String,
+    pub x_nm: i64,
+    pub y_nm: i64,
+    pub width_nm: i64,
+    pub height_nm: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ItemHitTestResult {
+    Unknown,
+    NoHit,
+    Hit,
+}
+
+impl std::fmt::Display for ItemHitTestResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Unknown => "unknown",
+            Self::NoHit => "no-hit",
+            Self::Hit => "hit",
+        };
+
+        write!(f, "{value}")
+    }
+}

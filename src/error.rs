@@ -31,6 +31,9 @@ pub enum KiCadError {
     #[error("item request status error `{code}`")]
     ItemStatus { code: String },
 
+    #[error("invalid API response: {reason}")]
+    InvalidResponse { reason: String },
+
     #[error("API response missing payload for `{expected_type_url}`")]
     MissingPayload { expected_type_url: String },
 
