@@ -24,6 +24,6 @@ pub use crate::model::board::{
     BoardEnabledLayers, BoardLayerInfo, BoardNet, BoardOriginKind, PadNetEntry, Vector2Nm,
 };
 pub use crate::model::common::{
-    DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, SelectionItemDetail,
-    SelectionSummary, SelectionTypeCount, VersionInfo,
+    DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, PcbObjectTypeCode,
+    SelectionItemDetail, SelectionSummary, SelectionTypeCount, TitleBlockInfo, VersionInfo,
 };

@@ -113,6 +113,15 @@ pub struct SelectionItemDetail {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TitleBlockInfo {
+    pub title: String,
+    pub date: String,
+    pub revision: String,
+    pub company: String,
+    pub comments: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ItemBoundingBox {
     pub item_id: String,
     pub x_nm: i64,
@@ -126,6 +135,12 @@ pub enum ItemHitTestResult {
     Unknown,
     NoHit,
     Hit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PcbObjectTypeCode {
+    pub code: i32,
+    pub name: &'static str,
 }
 
 impl std::fmt::Display for ItemHitTestResult {

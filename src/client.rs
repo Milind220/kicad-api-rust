@@ -9,8 +9,9 @@ use crate::model::board::{
     BoardEnabledLayers, BoardLayerInfo, BoardNet, BoardOriginKind, PadNetEntry, Vector2Nm,
 };
 use crate::model::common::{
-    DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, ProjectInfo,
-    SelectionItemDetail, SelectionSummary, SelectionTypeCount, VersionInfo,
+    DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, PcbObjectTypeCode,
+    ProjectInfo, SelectionItemDetail, SelectionSummary, SelectionTypeCount, TitleBlockInfo,
+    VersionInfo,
 };
 use crate::proto::kiapi::board::commands as board_commands;
 use crate::proto::kiapi::board::types as board_types;
@@ -29,11 +30,21 @@ const CMD_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.GetBoardEnabled
 const CMD_GET_ACTIVE_LAYER: &str = "kiapi.board.commands.GetActiveLayer";
 const CMD_GET_VISIBLE_LAYERS: &str = "kiapi.board.commands.GetVisibleLayers";
 const CMD_GET_BOARD_ORIGIN: &str = "kiapi.board.commands.GetBoardOrigin";
+const CMD_GET_BOARD_STACKUP: &str = "kiapi.board.commands.GetBoardStackup";
+const CMD_GET_GRAPHICS_DEFAULTS: &str = "kiapi.board.commands.GetGraphicsDefaults";
+const CMD_GET_BOARD_EDITOR_APPEARANCE_SETTINGS: &str =
+    "kiapi.board.commands.GetBoardEditorAppearanceSettings";
+const CMD_GET_ITEMS_BY_NET: &str = "kiapi.board.commands.GetItemsByNet";
+const CMD_GET_ITEMS_BY_NET_CLASS: &str = "kiapi.board.commands.GetItemsByNetClass";
+const CMD_GET_NETCLASS_FOR_NETS: &str = "kiapi.board.commands.GetNetClassForNets";
 const CMD_GET_SELECTION: &str = "kiapi.common.commands.GetSelection";
 const CMD_GET_ITEMS: &str = "kiapi.common.commands.GetItems";
 const CMD_GET_ITEMS_BY_ID: &str = "kiapi.common.commands.GetItemsById";
 const CMD_GET_BOUNDING_BOX: &str = "kiapi.common.commands.GetBoundingBox";
 const CMD_HIT_TEST: &str = "kiapi.common.commands.HitTest";
+const CMD_GET_TITLE_BLOCK_INFO: &str = "kiapi.common.commands.GetTitleBlockInfo";
+const CMD_SAVE_DOCUMENT_TO_STRING: &str = "kiapi.common.commands.SaveDocumentToString";
+const CMD_SAVE_SELECTION_TO_STRING: &str = "kiapi.common.commands.SaveSelectionToString";
 
 const RES_GET_VERSION: &str = "kiapi.common.commands.GetVersionResponse";
 const RES_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocumentsResponse";
@@ -41,11 +52,94 @@ const RES_GET_NETS: &str = "kiapi.board.commands.NetsResponse";
 const RES_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.BoardEnabledLayersResponse";
 const RES_BOARD_LAYER_RESPONSE: &str = "kiapi.board.commands.BoardLayerResponse";
 const RES_BOARD_LAYERS: &str = "kiapi.board.commands.BoardLayers";
+const RES_BOARD_STACKUP_RESPONSE: &str = "kiapi.board.commands.BoardStackupResponse";
+const RES_GRAPHICS_DEFAULTS_RESPONSE: &str = "kiapi.board.commands.GraphicsDefaultsResponse";
+const RES_BOARD_EDITOR_APPEARANCE_SETTINGS: &str =
+    "kiapi.board.commands.BoardEditorAppearanceSettings";
+const RES_NETCLASS_FOR_NETS_RESPONSE: &str = "kiapi.board.commands.NetClassForNetsResponse";
 const RES_VECTOR2: &str = "kiapi.common.types.Vector2";
 const RES_SELECTION_RESPONSE: &str = "kiapi.common.commands.SelectionResponse";
 const RES_GET_ITEMS_RESPONSE: &str = "kiapi.common.commands.GetItemsResponse";
 const RES_GET_BOUNDING_BOX_RESPONSE: &str = "kiapi.common.commands.GetBoundingBoxResponse";
 const RES_HIT_TEST_RESPONSE: &str = "kiapi.common.commands.HitTestResponse";
+const RES_TITLE_BLOCK_INFO: &str = "kiapi.common.types.TitleBlockInfo";
+const RES_SAVED_DOCUMENT_RESPONSE: &str = "kiapi.common.commands.SavedDocumentResponse";
+const RES_SAVED_SELECTION_RESPONSE: &str = "kiapi.common.commands.SavedSelectionResponse";
+
+const PCB_OBJECT_TYPES: [PcbObjectTypeCode; 18] = [
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbFootprint as i32,
+        name: "KOT_PCB_FOOTPRINT",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbPad as i32,
+        name: "KOT_PCB_PAD",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbShape as i32,
+        name: "KOT_PCB_SHAPE",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbReferenceImage as i32,
+        name: "KOT_PCB_REFERENCE_IMAGE",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbField as i32,
+        name: "KOT_PCB_FIELD",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbGenerator as i32,
+        name: "KOT_PCB_GENERATOR",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbText as i32,
+        name: "KOT_PCB_TEXT",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbTextbox as i32,
+        name: "KOT_PCB_TEXTBOX",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbTable as i32,
+        name: "KOT_PCB_TABLE",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbTablecell as i32,
+        name: "KOT_PCB_TABLECELL",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbTrace as i32,
+        name: "KOT_PCB_TRACE",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbVia as i32,
+        name: "KOT_PCB_VIA",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbArc as i32,
+        name: "KOT_PCB_ARC",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbMarker as i32,
+        name: "KOT_PCB_MARKER",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbDimension as i32,
+        name: "KOT_PCB_DIMENSION",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbZone as i32,
+        name: "KOT_PCB_ZONE",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbGroup as i32,
+        name: "KOT_PCB_GROUP",
+    },
+    PcbObjectTypeCode {
+        code: common_types::KiCadObjectType::KotPcbBarcode as i32,
+        name: "KOT_PCB_BARCODE",
+    },
+];
 
 #[derive(Clone, Debug)]
 pub struct KiCadClient {
@@ -348,6 +442,224 @@ impl KiCadClient {
             .get_items_raw(vec![common_types::KiCadObjectType::KotPcbFootprint as i32])
             .await?;
         pad_netlist_from_footprint_items(footprint_items)
+    }
+
+    pub fn pcb_object_type_codes() -> &'static [PcbObjectTypeCode] {
+        &PCB_OBJECT_TYPES
+    }
+
+    pub fn pcb_object_type_name(type_code: i32) -> Option<&'static str> {
+        PCB_OBJECT_TYPES
+            .iter()
+            .find(|entry| entry.code == type_code)
+            .map(|entry| entry.name)
+    }
+
+    pub fn debug_any_item(item: &prost_types::Any) -> Result<String, KiCadError> {
+        any_to_pretty_debug(item)
+    }
+
+    pub async fn get_items_raw_by_type_codes(
+        &self,
+        type_codes: Vec<i32>,
+    ) -> Result<Vec<prost_types::Any>, KiCadError> {
+        self.get_items_raw(type_codes).await
+    }
+
+    pub async fn get_items_details_by_type_codes(
+        &self,
+        type_codes: Vec<i32>,
+    ) -> Result<Vec<SelectionItemDetail>, KiCadError> {
+        let items = self.get_items_raw(type_codes).await?;
+        summarize_item_details(items)
+    }
+
+    pub async fn get_all_pcb_items_raw(
+        &self,
+    ) -> Result<Vec<(PcbObjectTypeCode, Vec<prost_types::Any>)>, KiCadError> {
+        let mut rows = Vec::with_capacity(PCB_OBJECT_TYPES.len());
+        for object_type in PCB_OBJECT_TYPES {
+            let items = self.get_items_raw(vec![object_type.code]).await?;
+            rows.push((object_type, items));
+        }
+
+        Ok(rows)
+    }
+
+    pub async fn get_all_pcb_items_details(
+        &self,
+    ) -> Result<Vec<(PcbObjectTypeCode, Vec<SelectionItemDetail>)>, KiCadError> {
+        let mut rows = Vec::with_capacity(PCB_OBJECT_TYPES.len());
+        for object_type in PCB_OBJECT_TYPES {
+            let items = self.get_items_raw(vec![object_type.code]).await?;
+            rows.push((object_type, summarize_item_details(items)?));
+        }
+
+        Ok(rows)
+    }
+
+    pub async fn get_items_by_net_raw(
+        &self,
+        type_codes: Vec<i32>,
+        net_codes: Vec<i32>,
+    ) -> Result<Vec<prost_types::Any>, KiCadError> {
+        let command = board_commands::GetItemsByNet {
+            header: Some(self.current_board_item_header().await?),
+            types: type_codes,
+            net_codes: net_codes
+                .into_iter()
+                .map(|value| board_types::NetCode { value })
+                .collect(),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_ITEMS_BY_NET))
+            .await?;
+        let payload: common_commands::GetItemsResponse =
+            envelope::unpack_any(&response, RES_GET_ITEMS_RESPONSE)?;
+        ensure_item_request_ok(payload.status)?;
+        Ok(payload.items)
+    }
+
+    pub async fn get_items_by_net_class_raw(
+        &self,
+        type_codes: Vec<i32>,
+        net_classes: Vec<String>,
+    ) -> Result<Vec<prost_types::Any>, KiCadError> {
+        let command = board_commands::GetItemsByNetClass {
+            header: Some(self.current_board_item_header().await?),
+            types: type_codes,
+            net_classes,
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_ITEMS_BY_NET_CLASS))
+            .await?;
+        let payload: common_commands::GetItemsResponse =
+            envelope::unpack_any(&response, RES_GET_ITEMS_RESPONSE)?;
+        ensure_item_request_ok(payload.status)?;
+        Ok(payload.items)
+    }
+
+    pub async fn get_netclass_for_nets_debug(
+        &self,
+        nets: Vec<BoardNet>,
+    ) -> Result<String, KiCadError> {
+        let command = board_commands::GetNetClassForNets {
+            net: nets
+                .into_iter()
+                .map(|net| board_types::Net {
+                    code: Some(board_types::NetCode { value: net.code }),
+                    name: net.name,
+                })
+                .collect(),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_NETCLASS_FOR_NETS))
+            .await?;
+        let payload: board_commands::NetClassForNetsResponse =
+            envelope::unpack_any(&response, RES_NETCLASS_FOR_NETS_RESPONSE)?;
+        Ok(format!("{:#?}", payload.classes))
+    }
+
+    pub async fn get_board_stackup_debug(&self) -> Result<String, KiCadError> {
+        let command = board_commands::GetBoardStackup {
+            board: Some(self.current_board_document_proto().await?),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_BOARD_STACKUP))
+            .await?;
+        let payload: board_commands::BoardStackupResponse =
+            envelope::unpack_any(&response, RES_BOARD_STACKUP_RESPONSE)?;
+        Ok(format!("{:#?}", payload.stackup))
+    }
+
+    pub async fn get_graphics_defaults_debug(&self) -> Result<String, KiCadError> {
+        let command = board_commands::GetGraphicsDefaults {
+            board: Some(self.current_board_document_proto().await?),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_GRAPHICS_DEFAULTS))
+            .await?;
+        let payload: board_commands::GraphicsDefaultsResponse =
+            envelope::unpack_any(&response, RES_GRAPHICS_DEFAULTS_RESPONSE)?;
+        Ok(format!("{:#?}", payload.defaults))
+    }
+
+    pub async fn get_board_editor_appearance_settings_debug(&self) -> Result<String, KiCadError> {
+        let command = board_commands::GetBoardEditorAppearanceSettings {};
+
+        let response = self
+            .send_command(envelope::pack_any(
+                &command,
+                CMD_GET_BOARD_EDITOR_APPEARANCE_SETTINGS,
+            ))
+            .await?;
+        let payload: board_commands::BoardEditorAppearanceSettings =
+            envelope::unpack_any(&response, RES_BOARD_EDITOR_APPEARANCE_SETTINGS)?;
+        Ok(format!("{:#?}", payload))
+    }
+
+    pub async fn get_title_block_info(&self) -> Result<TitleBlockInfo, KiCadError> {
+        let command = common_commands::GetTitleBlockInfo {
+            document: Some(self.current_board_document_proto().await?),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_TITLE_BLOCK_INFO))
+            .await?;
+        let payload: common_types::TitleBlockInfo =
+            envelope::unpack_any(&response, RES_TITLE_BLOCK_INFO)?;
+
+        let comments = vec![
+            payload.comment1,
+            payload.comment2,
+            payload.comment3,
+            payload.comment4,
+            payload.comment5,
+            payload.comment6,
+            payload.comment7,
+            payload.comment8,
+            payload.comment9,
+        ]
+        .into_iter()
+        .filter(|comment| !comment.is_empty())
+        .collect();
+
+        Ok(TitleBlockInfo {
+            title: payload.title,
+            date: payload.date,
+            revision: payload.revision,
+            company: payload.company,
+            comments,
+        })
+    }
+
+    pub async fn get_board_as_string(&self) -> Result<String, KiCadError> {
+        let command = common_commands::SaveDocumentToString {
+            document: Some(self.current_board_document_proto().await?),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_SAVE_DOCUMENT_TO_STRING))
+            .await?;
+        let payload: common_commands::SavedDocumentResponse =
+            envelope::unpack_any(&response, RES_SAVED_DOCUMENT_RESPONSE)?;
+        Ok(payload.contents)
+    }
+
+    pub async fn get_selection_as_string(&self) -> Result<String, KiCadError> {
+        let command = common_commands::SaveSelectionToString {};
+
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_SAVE_SELECTION_TO_STRING))
+            .await?;
+        let payload: common_commands::SavedSelectionResponse =
+            envelope::unpack_any(&response, RES_SAVED_SELECTION_RESPONSE)?;
+        Ok(payload.contents)
     }
 
     pub async fn get_items_by_id_raw(
@@ -764,6 +1076,49 @@ fn selection_item_detail(item: &prost_types::Any) -> Result<String, KiCadError> 
         ));
     }
 
+    if item.type_url == envelope::type_url("kiapi.board.types.Arc") {
+        let arc = decode_any::<board_types::Arc>(item, "kiapi.board.types.Arc")?;
+        let id = arc.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let start = arc
+            .start
+            .map_or_else(|| "-".to_string(), |v| format!("{},{}", v.x_nm, v.y_nm));
+        let mid = arc
+            .mid
+            .map_or_else(|| "-".to_string(), |v| format!("{},{}", v.x_nm, v.y_nm));
+        let end = arc
+            .end
+            .map_or_else(|| "-".to_string(), |v| format!("{},{}", v.x_nm, v.y_nm));
+        let width = arc
+            .width
+            .map_or_else(|| "-".to_string(), |w| w.value_nm.to_string());
+        let layer = layer_to_model(arc.layer).name;
+        let net = arc
+            .net
+            .map(|n| format!("{}:{}", n.code.map_or(0, |c| c.value), n.name))
+            .unwrap_or_else(|| "-".to_string());
+        return Ok(format!(
+            "arc id={id} start_nm={start} mid_nm={mid} end_nm={end} width_nm={width} layer={layer} net={net}"
+        ));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Via") {
+        let via = decode_any::<board_types::Via>(item, "kiapi.board.types.Via")?;
+        let id = via.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let position = via
+            .position
+            .map_or_else(|| "-".to_string(), |v| format!("{},{}", v.x_nm, v.y_nm));
+        let net = via
+            .net
+            .map(|n| format!("{}:{}", n.code.map_or(0, |c| c.value), n.name))
+            .unwrap_or_else(|| "-".to_string());
+        let via_type = board_types::ViaType::try_from(via.r#type)
+            .map(|value| value.as_str_name().to_string())
+            .unwrap_or_else(|_| format!("UNKNOWN({})", via.r#type));
+        return Ok(format!(
+            "via id={id} pos_nm={position} type={via_type} net={net}"
+        ));
+    }
+
     if item.type_url == envelope::type_url("kiapi.board.types.FootprintInstance") {
         let fp = decode_any::<board_types::FootprintInstance>(
             item,
@@ -780,9 +1135,24 @@ fn selection_item_detail(item: &prost_types::Any) -> Result<String, KiCadError> 
         let position = fp
             .position
             .map_or_else(|| "-".to_string(), |v| format!("{},{}", v.x_nm, v.y_nm));
+        let orientation_deg = fp.orientation.map_or_else(
+            || "-".to_string(),
+            |orientation| orientation.value_degrees.to_string(),
+        );
         let layer = layer_to_model(fp.layer).name;
+        let pad_count = fp
+            .definition
+            .as_ref()
+            .map(|definition| {
+                definition
+                    .items
+                    .iter()
+                    .filter(|entry| entry.type_url == envelope::type_url("kiapi.board.types.Pad"))
+                    .count()
+            })
+            .unwrap_or(0);
         return Ok(format!(
-            "footprint id={id} ref={reference} pos_nm={position} layer={layer}"
+            "footprint id={id} ref={reference} pos_nm={position} orientation_deg={orientation_deg} layer={layer} pad_count={pad_count}"
         ));
     }
 
@@ -800,6 +1170,50 @@ fn selection_item_detail(item: &prost_types::Any) -> Result<String, KiCadError> 
         ));
     }
 
+    if item.type_url == envelope::type_url("kiapi.board.types.BoardText") {
+        let text = decode_any::<board_types::BoardText>(item, "kiapi.board.types.BoardText")?;
+        let id = text.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let layer = layer_to_model(text.layer).name;
+        let body = text
+            .text
+            .as_ref()
+            .map(|value| value.text.clone())
+            .unwrap_or_else(|| "-".to_string());
+        return Ok(format!("text id={id} layer={layer} text={body}"));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.BoardTextBox") {
+        let textbox =
+            decode_any::<board_types::BoardTextBox>(item, "kiapi.board.types.BoardTextBox")?;
+        let id = textbox.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let layer = layer_to_model(textbox.layer).name;
+        let body = textbox
+            .textbox
+            .as_ref()
+            .map(|value| value.text.clone())
+            .unwrap_or_else(|| "-".to_string());
+        return Ok(format!("textbox id={id} layer={layer} text={body}"));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Pad") {
+        let pad = decode_any::<board_types::Pad>(item, "kiapi.board.types.Pad")?;
+        let id = pad.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let pad_type = board_types::PadType::try_from(pad.r#type)
+            .map(|value| value.as_str_name().to_string())
+            .unwrap_or_else(|_| format!("UNKNOWN({})", pad.r#type));
+        let position = pad
+            .position
+            .map_or_else(|| "-".to_string(), |v| format!("{},{}", v.x_nm, v.y_nm));
+        let net = pad
+            .net
+            .map(|n| format!("{}:{}", n.code.map_or(0, |c| c.value), n.name))
+            .unwrap_or_else(|| "-".to_string());
+        return Ok(format!(
+            "pad id={id} number={} type={pad_type} pos_nm={position} net={net}",
+            pad.number
+        ));
+    }
+
     if item.type_url == envelope::type_url("kiapi.board.types.BoardGraphicShape") {
         let shape = decode_any::<board_types::BoardGraphicShape>(
             item,
@@ -811,10 +1225,134 @@ fn selection_item_detail(item: &prost_types::Any) -> Result<String, KiCadError> 
             .net
             .map(|n| format!("{}:{}", n.code.map_or(0, |c| c.value), n.name))
             .unwrap_or_else(|| "-".to_string());
-        return Ok(format!("graphic id={id} layer={layer} net={net}"));
+        let geometry = shape
+            .shape
+            .as_ref()
+            .map(|graphic| format!("{:?}", graphic.geometry))
+            .unwrap_or_else(|| "-".to_string());
+        return Ok(format!(
+            "graphic id={id} layer={layer} net={net} geometry={geometry}"
+        ));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Zone") {
+        let zone = decode_any::<board_types::Zone>(item, "kiapi.board.types.Zone")?;
+        let id = zone.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let zone_type = board_types::ZoneType::try_from(zone.r#type)
+            .map(|value| value.as_str_name().to_string())
+            .unwrap_or_else(|_| format!("UNKNOWN({})", zone.r#type));
+        return Ok(format!(
+            "zone id={id} name={} type={} layer_count={} filled={} polygon_count={}",
+            zone.name,
+            zone_type,
+            zone.layers.len(),
+            zone.filled,
+            zone.filled_polygons.len()
+        ));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Dimension") {
+        let dimension = decode_any::<board_types::Dimension>(item, "kiapi.board.types.Dimension")?;
+        let id = dimension.id.map_or_else(|| "-".to_string(), |id| id.value);
+        let layer = layer_to_model(dimension.layer).name;
+        let text = dimension
+            .text
+            .as_ref()
+            .map(|value| value.text.clone())
+            .unwrap_or_else(|| "-".to_string());
+        let style = format!("{:?}", dimension.dimension_style);
+        return Ok(format!(
+            "dimension id={id} layer={layer} text={} style={style}",
+            text
+        ));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Group") {
+        let group = decode_any::<board_types::Group>(item, "kiapi.board.types.Group")?;
+        let id = group.id.map_or_else(|| "-".to_string(), |id| id.value);
+        return Ok(format!(
+            "group id={id} name={} item_count={}",
+            group.name,
+            group.items.len()
+        ));
     }
 
     Ok(format!("unparsed payload ({} bytes)", item.value.len()))
+}
+
+fn any_to_pretty_debug(item: &prost_types::Any) -> Result<String, KiCadError> {
+    if item.type_url == envelope::type_url("kiapi.board.types.Track") {
+        let value = decode_any::<board_types::Track>(item, "kiapi.board.types.Track")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Arc") {
+        let value = decode_any::<board_types::Arc>(item, "kiapi.board.types.Arc")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Via") {
+        let value = decode_any::<board_types::Via>(item, "kiapi.board.types.Via")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.FootprintInstance") {
+        let value = decode_any::<board_types::FootprintInstance>(
+            item,
+            "kiapi.board.types.FootprintInstance",
+        )?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Pad") {
+        let value = decode_any::<board_types::Pad>(item, "kiapi.board.types.Pad")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.BoardGraphicShape") {
+        let value = decode_any::<board_types::BoardGraphicShape>(
+            item,
+            "kiapi.board.types.BoardGraphicShape",
+        )?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.BoardText") {
+        let value = decode_any::<board_types::BoardText>(item, "kiapi.board.types.BoardText")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.BoardTextBox") {
+        let value =
+            decode_any::<board_types::BoardTextBox>(item, "kiapi.board.types.BoardTextBox")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Field") {
+        let value = decode_any::<board_types::Field>(item, "kiapi.board.types.Field")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Zone") {
+        let value = decode_any::<board_types::Zone>(item, "kiapi.board.types.Zone")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Dimension") {
+        let value = decode_any::<board_types::Dimension>(item, "kiapi.board.types.Dimension")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    if item.type_url == envelope::type_url("kiapi.board.types.Group") {
+        let value = decode_any::<board_types::Group>(item, "kiapi.board.types.Group")?;
+        return Ok(format!("{:#?}", value));
+    }
+
+    Ok(format!(
+        "unparsed_any type_url={} raw_len={}",
+        item.type_url,
+        item.value.len()
+    ))
 }
 
 fn select_single_board_document(
@@ -934,10 +1472,10 @@ fn default_client_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_item_request_ok, layer_to_model, map_hit_test_result, map_item_bounding_boxes,
-        model_document_to_proto, normalize_socket_uri, pad_netlist_from_footprint_items,
-        select_single_board_document, select_single_project_path, selection_item_detail,
-        summarize_item_details, summarize_selection,
+        any_to_pretty_debug, ensure_item_request_ok, layer_to_model, map_hit_test_result,
+        map_item_bounding_boxes, model_document_to_proto, normalize_socket_uri,
+        pad_netlist_from_footprint_items, select_single_board_document, select_single_project_path,
+        selection_item_detail, summarize_item_details, summarize_selection, PCB_OBJECT_TYPES,
     };
     use crate::error::KiCadError;
     use crate::model::common::{DocumentSpecifier, DocumentType, ProjectInfo};
@@ -1280,5 +1818,25 @@ mod tests {
             ),
             crate::model::common::ItemHitTestResult::NoHit
         );
+    }
+
+    #[test]
+    fn pcb_object_type_catalog_contains_expected_trace_entry() {
+        assert!(PCB_OBJECT_TYPES
+            .iter()
+            .any(|entry| entry.name == "KOT_PCB_TRACE" && entry.code == 11));
+    }
+
+    #[test]
+    fn any_to_pretty_debug_handles_unknown_type_without_error() {
+        let unknown = prost_types::Any {
+            type_url: "type.googleapis.com/kiapi.board.types.DoesNotExist".to_string(),
+            value: vec![0xde, 0xad, 0xbe, 0xef],
+        };
+
+        let debug = any_to_pretty_debug(&unknown)
+            .expect("unknown Any payload type should not fail debug rendering");
+        assert!(debug.contains("unparsed_any"));
+        assert!(debug.contains("raw_len=4"));
     }
 }

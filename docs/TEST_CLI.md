@@ -125,6 +125,68 @@ Run hit-test on a specific item:
 cargo run --bin kicad-ipc-cli -- hit-test --id <uuid> --x-nm <x> --y-nm <y> --tolerance-nm 0
 ```
 
+List all PCB object type IDs from the proto enum:
+
+```bash
+cargo run --bin kicad-ipc-cli -- types-pcb
+```
+
+Dump raw item payloads for one or more PCB object type IDs:
+
+```bash
+cargo run --bin kicad-ipc-cli -- items-raw --type-id 11 --type-id 13 --debug
+```
+
+Dump raw payloads for all PCB object classes:
+
+```bash
+cargo run --bin kicad-ipc-cli -- items-raw-all-pcb --debug
+```
+
+Dump board text (KiCad s-expression):
+
+```bash
+cargo run --bin kicad-ipc-cli -- board-as-string
+```
+
+Dump selection text (KiCad s-expression):
+
+```bash
+cargo run --bin kicad-ipc-cli -- selection-as-string
+```
+
+Dump title block fields:
+
+```bash
+cargo run --bin kicad-ipc-cli -- title-block
+```
+
+Dump stackup/graphics/appearance raw debug:
+
+```bash
+cargo run --bin kicad-ipc-cli -- stackup-debug
+cargo run --bin kicad-ipc-cli -- graphics-defaults-debug
+cargo run --bin kicad-ipc-cli -- appearance-debug
+```
+
+Dump netclass map raw debug:
+
+```bash
+cargo run --bin kicad-ipc-cli -- netclass-debug
+```
+
+Print proto command coverage status (board read):
+
+```bash
+cargo run --bin kicad-ipc-cli -- proto-coverage-board-read
+```
+
+Generate full board-read reconstruction markdown report:
+
+```bash
+cargo run --bin kicad-ipc-cli -- board-read-report --out docs/BOARD_READ_REPORT.md
+```
+
 Get current project path (derived from open PCB docs):
 
 ```bash
