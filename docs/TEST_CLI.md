@@ -101,6 +101,12 @@ Show visible layers:
 cargo run --bin kicad-ipc-cli -- visible-layers
 ```
 
+Set visible layers:
+
+```bash
+cargo run --bin kicad-ipc-cli -- set-visible-layers --layer-id 0 --layer-id 31
+```
+
 Show board origin (grid origin by default):
 
 ```bash

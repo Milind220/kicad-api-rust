@@ -41,9 +41,9 @@ Legend:
 | Common (base) | 6 | 4 | 67% |
 | Common editor/document | 23 | 12 | 52% |
 | Project manager | 5 | 3 | 60% |
-| Board editor (PCB) | 22 | 14 | 64% |
+| Board editor (PCB) | 22 | 15 | 68% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **33** | **59%** |
+| **Total** | **56** | **34** | **61%** |
 
 ### Common (base)
 
@@ -114,7 +114,7 @@ Legend:
 | `CheckPadstackPresenceOnLayers` | Implemented | `KiCadClient::check_padstack_presence_on_layers_raw`, `KiCadClient::check_padstack_presence_on_layers` |
 | `InjectDrcError` | Not yet | - |
 | `GetVisibleLayers` | Implemented | `KiCadClient::get_visible_layers` |
-| `SetVisibleLayers` | Not yet | - |
+| `SetVisibleLayers` | Implemented | `KiCadClient::set_visible_layers` |
 | `GetActiveLayer` | Implemented | `KiCadClient::get_active_layer` |
 | `SetActiveLayer` | Implemented | `KiCadClient::set_active_layer` |
 | `GetBoardEditorAppearanceSettings` | Implemented | `KiCadClient::get_board_editor_appearance_settings_raw`, `KiCadClient::get_board_editor_appearance_settings` |
