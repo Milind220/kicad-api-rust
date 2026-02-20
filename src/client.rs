@@ -19,10 +19,10 @@ use crate::model::board::{
 };
 use crate::model::common::{
     CommitAction, CommitSession, DocumentSpecifier, DocumentType, EditorFrameType, ItemBoundingBox,
-    ItemHitTestResult, PcbObjectTypeCode, ProjectInfo, RunActionStatus, SelectionItemDetail,
-    SelectionSummary, SelectionTypeCount, TextAsShapesEntry, TextAttributesSpec, TextBoxSpec,
-    TextExtents, TextHorizontalAlignment, TextObjectSpec, TextShape, TextShapeGeometry, TextSpec,
-    TextVerticalAlignment, TitleBlockInfo, VersionInfo,
+    ItemHitTestResult, MapMergeMode, PcbObjectTypeCode, ProjectInfo, RunActionStatus,
+    SelectionItemDetail, SelectionSummary, SelectionTypeCount, TextAsShapesEntry,
+    TextAttributesSpec, TextBoxSpec, TextExtents, TextHorizontalAlignment, TextObjectSpec,
+    TextShape, TextShapeGeometry, TextSpec, TextVerticalAlignment, TitleBlockInfo, VersionInfo,
 };
 use crate::proto::kiapi::board as board_proto;
 use crate::proto::kiapi::board::commands as board_commands;
@@ -40,6 +40,7 @@ const CMD_GET_VERSION: &str = "kiapi.common.commands.GetVersion";
 const CMD_GET_KICAD_BINARY_PATH: &str = "kiapi.common.commands.GetKiCadBinaryPath";
 const CMD_GET_PLUGIN_SETTINGS_PATH: &str = "kiapi.common.commands.GetPluginSettingsPath";
 const CMD_GET_NET_CLASSES: &str = "kiapi.common.commands.GetNetClasses";
+const CMD_SET_NET_CLASSES: &str = "kiapi.common.commands.SetNetClasses";
 const CMD_GET_TEXT_VARIABLES: &str = "kiapi.common.commands.GetTextVariables";
 const CMD_EXPAND_TEXT_VARIABLES: &str = "kiapi.common.commands.ExpandTextVariables";
 const CMD_GET_TEXT_EXTENTS: &str = "kiapi.common.commands.GetTextExtents";
@@ -463,6 +464,33 @@ impl KiCadClient {
             .collect();
         classes.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(classes)
+    }
+
+    pub async fn set_net_classes_raw(
+        &self,
+        net_classes: Vec<NetClassInfo>,
+        merge_mode: MapMergeMode,
+    ) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::SetNetClasses {
+            net_classes: net_classes
+                .into_iter()
+                .map(net_class_info_to_proto)
+                .collect(),
+            merge_mode: map_merge_mode_to_proto(merge_mode),
+        };
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_SET_NET_CLASSES))
+            .await?;
+        response_payload_as_any(response, RES_PROTOBUF_EMPTY)
+    }
+
+    pub async fn set_net_classes(
+        &self,
+        net_classes: Vec<NetClassInfo>,
+        merge_mode: MapMergeMode,
+    ) -> Result<Vec<NetClassInfo>, KiCadError> {
+        let _ = self.set_net_classes_raw(net_classes, merge_mode).await?;
+        self.get_net_classes().await
     }
 
     pub async fn get_text_variables_raw(&self) -> Result<prost_types::Any, KiCadError> {
@@ -2161,6 +2189,13 @@ fn commit_action_to_proto(action: CommitAction) -> i32 {
     }
 }
 
+fn map_merge_mode_to_proto(value: MapMergeMode) -> i32 {
+    match value {
+        MapMergeMode::Merge => common_types::MapMergeMode::MmmMerge as i32,
+        MapMergeMode::Replace => common_types::MapMergeMode::MmmReplace as i32,
+    }
+}
+
 fn summarize_selection(items: Vec<prost_types::Any>) -> SelectionSummary {
     let mut counts = BTreeMap::<String, usize>::new();
 
@@ -2642,6 +2677,62 @@ fn board_editor_appearance_settings_to_proto(
         net_color_display: net_color_display_mode_to_proto(settings.net_color_display),
         board_flip: board_flip_mode_to_proto(settings.board_flip),
         ratsnest_display: ratsnest_display_mode_to_proto(settings.ratsnest_display),
+    }
+}
+
+fn net_class_type_to_proto(value: NetClassType) -> i32 {
+    match value {
+        NetClassType::Explicit => common_project::NetClassType::NctExplicit as i32,
+        NetClassType::Implicit => common_project::NetClassType::NctImplicit as i32,
+        NetClassType::Unknown(raw) => raw,
+    }
+}
+
+fn net_class_info_to_proto(value: NetClassInfo) -> common_project::NetClass {
+    let board = value
+        .board
+        .map(|board| common_project::NetClassBoardSettings {
+            clearance: board
+                .clearance_nm
+                .map(|value_nm| common_types::Distance { value_nm }),
+            track_width: board
+                .track_width_nm
+                .map(|value_nm| common_types::Distance { value_nm }),
+            diff_pair_track_width: board
+                .diff_pair_track_width_nm
+                .map(|value_nm| common_types::Distance { value_nm }),
+            diff_pair_gap: board
+                .diff_pair_gap_nm
+                .map(|value_nm| common_types::Distance { value_nm }),
+            diff_pair_via_gap: board
+                .diff_pair_via_gap_nm
+                .map(|value_nm| common_types::Distance { value_nm }),
+            via_stack: if board.has_via_stack {
+                Some(board_types::PadStack::default())
+            } else {
+                None
+            },
+            microvia_stack: if board.has_microvia_stack {
+                Some(board_types::PadStack::default())
+            } else {
+                None
+            },
+            color: board.color.map(|color| common_types::Color {
+                r: color.r,
+                g: color.g,
+                b: color.b,
+                a: color.a,
+            }),
+            tuning_profile: board.tuning_profile,
+        });
+
+    common_project::NetClass {
+        name: value.name,
+        priority: value.priority,
+        board,
+        schematic: None,
+        r#type: net_class_type_to_proto(value.class_type),
+        constituents: value.constituents,
     }
 }
 
@@ -3379,11 +3470,12 @@ mod tests {
         any_to_pretty_debug, board_editor_appearance_settings_to_proto, commit_action_to_proto,
         drc_severity_to_proto, ensure_item_deletion_status_ok, ensure_item_request_ok,
         ensure_item_status_ok, layer_to_model, map_commit_session, map_hit_test_result,
-        map_item_bounding_boxes, map_polygon_with_holes, map_run_action_status,
-        model_document_to_proto, normalize_socket_uri, pad_netlist_from_footprint_items,
-        response_payload_as_any, select_single_board_document, select_single_project_path,
-        selection_item_detail, summarize_item_details, summarize_selection,
-        text_horizontal_alignment_to_proto, text_spec_to_proto, PCB_OBJECT_TYPES,
+        map_item_bounding_boxes, map_merge_mode_to_proto, map_polygon_with_holes,
+        map_run_action_status, model_document_to_proto, normalize_socket_uri,
+        pad_netlist_from_footprint_items, response_payload_as_any, select_single_board_document,
+        select_single_project_path, selection_item_detail, summarize_item_details,
+        summarize_selection, text_horizontal_alignment_to_proto, text_spec_to_proto,
+        PCB_OBJECT_TYPES,
     };
     use crate::error::KiCadError;
     use crate::model::common::{
@@ -3548,6 +3640,18 @@ mod tests {
         assert_eq!(
             commit_action_to_proto(CommitAction::Drop),
             crate::proto::kiapi::common::commands::CommitAction::CmaDrop as i32
+        );
+    }
+
+    #[test]
+    fn map_merge_mode_to_proto_maps_known_variants() {
+        assert_eq!(
+            map_merge_mode_to_proto(crate::model::common::MapMergeMode::Merge),
+            crate::proto::kiapi::common::types::MapMergeMode::MmmMerge as i32
+        );
+        assert_eq!(
+            map_merge_mode_to_proto(crate::model::common::MapMergeMode::Replace),
+            crate::proto::kiapi::common::types::MapMergeMode::MmmReplace as i32
         );
     }
 

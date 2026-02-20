@@ -43,6 +43,7 @@ Deferred manual/runtime verification (implemented after 2026-02-20 while user un
 - `UpdateItems`
 - `DeleteItems`
 - `ParseAndCreateItemsFromString`
+- `SetNetClasses`
 
 ## KiCad v10 RC1.1 API Completion Matrix
 
@@ -64,10 +65,10 @@ Legend:
 | --- | ---: | ---: | ---: |
 | Common (base) | 6 | 6 | 100% |
 | Common editor/document | 23 | 23 | 100% |
-| Project manager | 5 | 3 | 60% |
+| Project manager | 5 | 4 | 80% |
 | Board editor (PCB) | 22 | 20 | 91% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **52** | **93%** |
+| **Total** | **56** | **53** | **95%** |
 
 ### Common (base)
 
@@ -113,7 +114,7 @@ Legend:
 | KiCad Command | Status | Rust API |
 | --- | --- | --- |
 | `GetNetClasses` | Implemented | `KiCadClient::get_net_classes_raw`, `KiCadClient::get_net_classes` |
-| `SetNetClasses` | Not yet | - |
+| `SetNetClasses` | Implemented | `KiCadClient::set_net_classes_raw`, `KiCadClient::set_net_classes` |
 | `ExpandTextVariables` | Implemented | `KiCadClient::expand_text_variables_raw`, `KiCadClient::expand_text_variables` |
 | `GetTextVariables` | Implemented | `KiCadClient::get_text_variables_raw`, `KiCadClient::get_text_variables` |
 | `SetTextVariables` | Not yet | - |

@@ -65,6 +65,12 @@ List project net classes:
 cargo run --bin kicad-ipc-cli -- net-classes
 ```
 
+Write current net classes back with selected merge mode:
+
+```bash
+cargo run --bin kicad-ipc-cli -- set-net-classes --merge-mode merge
+```
+
 List text variables for current board document:
 
 ```bash

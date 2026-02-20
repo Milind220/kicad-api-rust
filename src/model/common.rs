@@ -191,6 +191,35 @@ pub enum RunActionStatus {
     Unknown(i32),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MapMergeMode {
+    Merge,
+    Replace,
+}
+
+impl std::fmt::Display for MapMergeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Merge => write!(f, "merge"),
+            Self::Replace => write!(f, "replace"),
+        }
+    }
+}
+
+impl FromStr for MapMergeMode {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "merge" => Ok(Self::Merge),
+            "replace" => Ok(Self::Replace),
+            _ => Err(format!(
+                "unknown merge mode `{value}`; expected `merge` or `replace`"
+            )),
+        }
+    }
+}
+
 impl std::fmt::Display for CommitAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -403,7 +432,7 @@ impl std::fmt::Display for ItemHitTestResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{CommitAction, EditorFrameType};
+    use super::{CommitAction, EditorFrameType, MapMergeMode};
     use std::str::FromStr;
 
     #[test]
@@ -432,5 +461,16 @@ mod tests {
     #[test]
     fn editor_frame_type_rejects_unknown_values() {
         assert!(EditorFrameType::from_str("layout").is_err());
+    }
+
+    #[test]
+    fn map_merge_mode_parses_known_values() {
+        assert_eq!(MapMergeMode::from_str("merge"), Ok(MapMergeMode::Merge));
+        assert_eq!(MapMergeMode::from_str("replace"), Ok(MapMergeMode::Replace));
+    }
+
+    #[test]
+    fn map_merge_mode_rejects_unknown_values() {
+        assert!(MapMergeMode::from_str("upsert").is_err());
     }
 }
