@@ -13,6 +13,65 @@ pub struct VersionInfo {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EditorFrameType {
+    ProjectManager,
+    SchematicEditor,
+    PcbEditor,
+    SpiceSimulator,
+    SymbolEditor,
+    FootprintEditor,
+    DrawingSheetEditor,
+}
+
+impl EditorFrameType {
+    pub(crate) fn to_proto(self) -> i32 {
+        match self {
+            Self::ProjectManager => common_types::FrameType::FtProjectManager as i32,
+            Self::SchematicEditor => common_types::FrameType::FtSchematicEditor as i32,
+            Self::PcbEditor => common_types::FrameType::FtPcbEditor as i32,
+            Self::SpiceSimulator => common_types::FrameType::FtSpiceSimulator as i32,
+            Self::SymbolEditor => common_types::FrameType::FtSymbolEditor as i32,
+            Self::FootprintEditor => common_types::FrameType::FtFootprintEditor as i32,
+            Self::DrawingSheetEditor => common_types::FrameType::FtDrawingSheetEditor as i32,
+        }
+    }
+}
+
+impl std::fmt::Display for EditorFrameType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::ProjectManager => "project-manager",
+            Self::SchematicEditor => "schematic",
+            Self::PcbEditor => "pcb",
+            Self::SpiceSimulator => "spice",
+            Self::SymbolEditor => "symbol",
+            Self::FootprintEditor => "footprint",
+            Self::DrawingSheetEditor => "drawing-sheet",
+        };
+        write!(f, "{value}")
+    }
+}
+
+impl FromStr for EditorFrameType {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "project-manager" => Ok(Self::ProjectManager),
+            "schematic" => Ok(Self::SchematicEditor),
+            "pcb" => Ok(Self::PcbEditor),
+            "spice" => Ok(Self::SpiceSimulator),
+            "symbol" => Ok(Self::SymbolEditor),
+            "footprint" => Ok(Self::FootprintEditor),
+            "drawing-sheet" => Ok(Self::DrawingSheetEditor),
+            _ => Err(format!(
+                "unknown frame `{value}`; expected one of: project-manager, schematic, pcb, spice, symbol, footprint, drawing-sheet"
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DocumentType {
     Schematic,
     Symbol,
@@ -336,7 +395,7 @@ impl std::fmt::Display for ItemHitTestResult {
 
 #[cfg(test)]
 mod tests {
-    use super::CommitAction;
+    use super::{CommitAction, EditorFrameType};
     use std::str::FromStr;
 
     #[test]
@@ -348,5 +407,22 @@ mod tests {
     #[test]
     fn commit_action_rejects_unknown_values() {
         assert!(CommitAction::from_str("rollback").is_err());
+    }
+
+    #[test]
+    fn editor_frame_type_parses_known_values() {
+        assert_eq!(
+            EditorFrameType::from_str("pcb"),
+            Ok(EditorFrameType::PcbEditor)
+        );
+        assert_eq!(
+            EditorFrameType::from_str("project-manager"),
+            Ok(EditorFrameType::ProjectManager)
+        );
+    }
+
+    #[test]
+    fn editor_frame_type_rejects_unknown_values() {
+        assert!(EditorFrameType::from_str("layout").is_err());
     }
 }

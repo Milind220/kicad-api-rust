@@ -107,6 +107,14 @@ Show drill origin:
 cargo run --bin kicad-ipc-cli -- board-origin --type drill
 ```
 
+Refresh PCB editor:
+
+```bash
+cargo run --bin kicad-ipc-cli -- refresh-editor --frame pcb
+```
+
+If your KiCad build does not expose this handler yet, this call may return `AS_UNHANDLED`.
+
 Start a staged commit and print commit ID:
 
 ```bash

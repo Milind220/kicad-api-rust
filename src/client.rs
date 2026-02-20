@@ -18,7 +18,7 @@ use crate::model::board::{
     Vector2Nm,
 };
 use crate::model::common::{
-    CommitAction, CommitSession, DocumentSpecifier, DocumentType, ItemBoundingBox,
+    CommitAction, CommitSession, DocumentSpecifier, DocumentType, EditorFrameType, ItemBoundingBox,
     ItemHitTestResult, PcbObjectTypeCode, ProjectInfo, SelectionItemDetail, SelectionSummary,
     SelectionTypeCount, TextAsShapesEntry, TextAttributesSpec, TextBoxSpec, TextExtents,
     TextHorizontalAlignment, TextObjectSpec, TextShape, TextShapeGeometry, TextSpec,
@@ -42,6 +42,7 @@ const CMD_GET_TEXT_VARIABLES: &str = "kiapi.common.commands.GetTextVariables";
 const CMD_EXPAND_TEXT_VARIABLES: &str = "kiapi.common.commands.ExpandTextVariables";
 const CMD_GET_TEXT_EXTENTS: &str = "kiapi.common.commands.GetTextExtents";
 const CMD_GET_TEXT_AS_SHAPES: &str = "kiapi.common.commands.GetTextAsShapes";
+const CMD_REFRESH_EDITOR: &str = "kiapi.common.commands.RefreshEditor";
 const CMD_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocuments";
 const CMD_GET_NETS: &str = "kiapi.board.commands.GetNets";
 const CMD_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.GetBoardEnabledLayers";
@@ -289,6 +290,17 @@ impl KiCadClient {
 
     pub async fn ping(&self) -> Result<(), KiCadError> {
         let command = envelope::pack_any(&common_commands::Ping {}, CMD_PING);
+        self.send_command(command).await?;
+        Ok(())
+    }
+
+    pub async fn refresh_editor(&self, frame: EditorFrameType) -> Result<(), KiCadError> {
+        let command = envelope::pack_any(
+            &common_commands::RefreshEditor {
+                frame: frame.to_proto(),
+            },
+            CMD_REFRESH_EDITOR,
+        );
         self.send_command(command).await?;
         Ok(())
     }

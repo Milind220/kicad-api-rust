@@ -33,7 +33,7 @@ pub use crate::model::board::{
     Vector2Nm,
 };
 pub use crate::model::common::{
-    CommitAction, CommitSession, DocumentSpecifier, DocumentType, ItemBoundingBox,
+    CommitAction, CommitSession, DocumentSpecifier, DocumentType, EditorFrameType, ItemBoundingBox,
     ItemHitTestResult, PcbObjectTypeCode, SelectionItemDetail, SelectionSummary,
     SelectionTypeCount, TextAsShapesEntry, TextAttributesSpec, TextBoxSpec, TextExtents,
     TextHorizontalAlignment, TextObjectSpec, TextShape, TextShapeGeometry, TextSpec,
