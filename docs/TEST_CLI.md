@@ -205,6 +205,12 @@ Delete items by ID:
 cargo run --bin kicad-ipc-cli -- delete-items --id <uuid> --id <uuid>
 ```
 
+Parse and create items from s-expression:
+
+```bash
+cargo run --bin kicad-ipc-cli -- parse-create-items --contents "(kicad_pcb (version 20240108))"
+```
+
 Show summary of current PCB selection by item type:
 
 ```bash

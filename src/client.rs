@@ -79,6 +79,8 @@ const CMD_END_COMMIT: &str = "kiapi.common.commands.EndCommit";
 const CMD_CREATE_ITEMS: &str = "kiapi.common.commands.CreateItems";
 const CMD_UPDATE_ITEMS: &str = "kiapi.common.commands.UpdateItems";
 const CMD_DELETE_ITEMS: &str = "kiapi.common.commands.DeleteItems";
+const CMD_PARSE_AND_CREATE_ITEMS_FROM_STRING: &str =
+    "kiapi.common.commands.ParseAndCreateItemsFromString";
 const CMD_GET_ITEMS: &str = "kiapi.common.commands.GetItems";
 const CMD_GET_ITEMS_BY_ID: &str = "kiapi.common.commands.GetItemsById";
 const CMD_GET_BOUNDING_BOX: &str = "kiapi.common.commands.GetBoundingBox";
@@ -731,6 +733,47 @@ impl KiCadClient {
                     .ok_or_else(|| KiCadError::InvalidResponse {
                         reason: "DeleteItemsResponse missing deleted item id".to_string(),
                     })
+            })
+            .collect()
+    }
+
+    pub async fn parse_and_create_items_from_string_raw(
+        &self,
+        contents: impl Into<String>,
+    ) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::ParseAndCreateItemsFromString {
+            document: Some(self.current_board_document_proto().await?),
+            contents: contents.into(),
+        };
+
+        let response = self
+            .send_command(envelope::pack_any(
+                &command,
+                CMD_PARSE_AND_CREATE_ITEMS_FROM_STRING,
+            ))
+            .await?;
+        response_payload_as_any(response, RES_CREATE_ITEMS_RESPONSE)
+    }
+
+    pub async fn parse_and_create_items_from_string(
+        &self,
+        contents: impl Into<String>,
+    ) -> Result<Vec<prost_types::Any>, KiCadError> {
+        let payload = self
+            .parse_and_create_items_from_string_raw(contents)
+            .await?;
+        let response: common_commands::CreateItemsResponse =
+            decode_any(&payload, RES_CREATE_ITEMS_RESPONSE)?;
+        ensure_item_request_ok(response.status)?;
+
+        response
+            .created_items
+            .into_iter()
+            .map(|row| {
+                ensure_item_status_ok(row.status)?;
+                row.item.ok_or_else(|| KiCadError::InvalidResponse {
+                    reason: "CreateItemsResponse missing created item payload".to_string(),
+                })
             })
             .collect()
     }

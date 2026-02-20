@@ -42,6 +42,7 @@ Deferred manual/runtime verification (implemented after 2026-02-20 while user un
 - `CreateItems`
 - `UpdateItems`
 - `DeleteItems`
+- `ParseAndCreateItemsFromString`
 
 ## KiCad v10 RC1.1 API Completion Matrix
 
@@ -62,11 +63,11 @@ Legend:
 | Section | Proto Commands | Implemented | Coverage |
 | --- | ---: | ---: | ---: |
 | Common (base) | 6 | 6 | 100% |
-| Common editor/document | 23 | 22 | 96% |
+| Common editor/document | 23 | 23 | 100% |
 | Project manager | 5 | 3 | 60% |
 | Board editor (PCB) | 22 | 20 | 91% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **51** | **91%** |
+| **Total** | **56** | **52** | **93%** |
 
 ### Common (base)
 
@@ -105,7 +106,7 @@ Legend:
 | `GetTitleBlockInfo` | Implemented | `KiCadClient::get_title_block_info` |
 | `SaveDocumentToString` | Implemented | `KiCadClient::get_board_as_string` |
 | `SaveSelectionToString` | Implemented | `KiCadClient::get_selection_as_string` |
-| `ParseAndCreateItemsFromString` | Not yet | - |
+| `ParseAndCreateItemsFromString` | Implemented | `KiCadClient::parse_and_create_items_from_string_raw`, `KiCadClient::parse_and_create_items_from_string` |
 
 ### Project manager
 
