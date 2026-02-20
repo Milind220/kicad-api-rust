@@ -114,6 +114,11 @@ pub struct SelectionItemDetail {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommitSession {
+    pub id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TitleBlockInfo {
     pub title: String,
     pub date: String,

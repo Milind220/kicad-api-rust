@@ -18,10 +18,11 @@ use crate::model::board::{
     Vector2Nm,
 };
 use crate::model::common::{
-    DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, PcbObjectTypeCode,
-    ProjectInfo, SelectionItemDetail, SelectionSummary, SelectionTypeCount, TextAsShapesEntry,
-    TextAttributesSpec, TextBoxSpec, TextExtents, TextHorizontalAlignment, TextObjectSpec,
-    TextShape, TextShapeGeometry, TextSpec, TextVerticalAlignment, TitleBlockInfo, VersionInfo,
+    CommitSession, DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult,
+    PcbObjectTypeCode, ProjectInfo, SelectionItemDetail, SelectionSummary, SelectionTypeCount,
+    TextAsShapesEntry, TextAttributesSpec, TextBoxSpec, TextExtents, TextHorizontalAlignment,
+    TextObjectSpec, TextShape, TextShapeGeometry, TextSpec, TextVerticalAlignment, TitleBlockInfo,
+    VersionInfo,
 };
 use crate::proto::kiapi::board as board_proto;
 use crate::proto::kiapi::board::commands as board_commands;
@@ -58,6 +59,7 @@ const CMD_GET_PAD_SHAPE_AS_POLYGON: &str = "kiapi.board.commands.GetPadShapeAsPo
 const CMD_CHECK_PADSTACK_PRESENCE_ON_LAYERS: &str =
     "kiapi.board.commands.CheckPadstackPresenceOnLayers";
 const CMD_GET_SELECTION: &str = "kiapi.common.commands.GetSelection";
+const CMD_BEGIN_COMMIT: &str = "kiapi.common.commands.BeginCommit";
 const CMD_GET_ITEMS: &str = "kiapi.common.commands.GetItems";
 const CMD_GET_ITEMS_BY_ID: &str = "kiapi.common.commands.GetItemsById";
 const CMD_GET_BOUNDING_BOX: &str = "kiapi.common.commands.GetBoundingBox";
@@ -87,6 +89,7 @@ const RES_PAD_SHAPE_AS_POLYGON_RESPONSE: &str = "kiapi.board.commands.PadShapeAs
 const RES_PADSTACK_PRESENCE_RESPONSE: &str = "kiapi.board.commands.PadstackPresenceResponse";
 const RES_VECTOR2: &str = "kiapi.common.types.Vector2";
 const RES_SELECTION_RESPONSE: &str = "kiapi.common.commands.SelectionResponse";
+const RES_BEGIN_COMMIT_RESPONSE: &str = "kiapi.common.commands.BeginCommitResponse";
 const RES_GET_ITEMS_RESPONSE: &str = "kiapi.common.commands.GetItemsResponse";
 const RES_GET_BOUNDING_BOX_RESPONSE: &str = "kiapi.common.commands.GetBoundingBoxResponse";
 const RES_HIT_TEST_RESPONSE: &str = "kiapi.common.commands.HitTestResponse";
@@ -460,6 +463,21 @@ impl KiCadClient {
     pub async fn has_open_board(&self) -> Result<bool, KiCadError> {
         let docs = self.get_open_documents(DocumentType::Pcb).await?;
         Ok(!docs.is_empty())
+    }
+
+    pub async fn begin_commit_raw(&self) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::BeginCommit {};
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_BEGIN_COMMIT))
+            .await?;
+        response_payload_as_any(response, RES_BEGIN_COMMIT_RESPONSE)
+    }
+
+    pub async fn begin_commit(&self) -> Result<CommitSession, KiCadError> {
+        let payload = self.begin_commit_raw().await?;
+        let response: common_commands::BeginCommitResponse =
+            decode_any(&payload, RES_BEGIN_COMMIT_RESPONSE)?;
+        map_commit_session(response)
     }
 
     pub async fn get_nets(&self) -> Result<Vec<BoardNet>, KiCadError> {
@@ -1551,6 +1569,22 @@ fn summarize_item_details(
     Ok(details)
 }
 
+fn map_commit_session(
+    response: common_commands::BeginCommitResponse,
+) -> Result<CommitSession, KiCadError> {
+    let id = response.id.ok_or_else(|| KiCadError::InvalidResponse {
+        reason: "BeginCommit response missing commit id".to_string(),
+    })?;
+
+    if id.value.is_empty() {
+        return Err(KiCadError::InvalidResponse {
+            reason: "BeginCommit response returned empty commit id".to_string(),
+        });
+    }
+
+    Ok(CommitSession { id: id.value })
+}
+
 fn ensure_item_request_ok(status: i32) -> Result<(), KiCadError> {
     let request_status = common_types::ItemRequestStatus::try_from(status)
         .unwrap_or(common_types::ItemRequestStatus::IrsUnknown);
@@ -2617,12 +2651,12 @@ fn default_client_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        any_to_pretty_debug, ensure_item_request_ok, layer_to_model, map_hit_test_result,
-        map_item_bounding_boxes, map_polygon_with_holes, model_document_to_proto,
-        normalize_socket_uri, pad_netlist_from_footprint_items, select_single_board_document,
-        select_single_project_path, selection_item_detail, summarize_item_details,
-        summarize_selection, text_horizontal_alignment_to_proto, text_spec_to_proto,
-        PCB_OBJECT_TYPES,
+        any_to_pretty_debug, ensure_item_request_ok, layer_to_model, map_commit_session,
+        map_hit_test_result, map_item_bounding_boxes, map_polygon_with_holes,
+        model_document_to_proto, normalize_socket_uri, pad_netlist_from_footprint_items,
+        response_payload_as_any, select_single_board_document, select_single_project_path,
+        selection_item_detail, summarize_item_details, summarize_selection,
+        text_horizontal_alignment_to_proto, text_spec_to_proto, PCB_OBJECT_TYPES,
     };
     use crate::error::KiCadError;
     use crate::model::common::{
@@ -2757,6 +2791,41 @@ mod tests {
         let project = proto.project.expect("project should be present");
         assert_eq!(project.name, "demo");
         assert_eq!(project.path, "/tmp/demo");
+    }
+
+    #[test]
+    fn map_commit_session_maps_commit_id() {
+        let response = crate::proto::kiapi::common::commands::BeginCommitResponse {
+            id: Some(crate::proto::kiapi::common::types::Kiid {
+                value: "commit-123".to_string(),
+            }),
+        };
+
+        let session = map_commit_session(response).expect("commit id should map");
+        assert_eq!(session.id, "commit-123");
+    }
+
+    #[test]
+    fn map_commit_session_requires_commit_id() {
+        let response = crate::proto::kiapi::common::commands::BeginCommitResponse { id: None };
+        let err = map_commit_session(response).expect_err("missing id must fail");
+        assert!(matches!(err, KiCadError::InvalidResponse { .. }));
+    }
+
+    #[test]
+    fn response_payload_as_any_validates_type_url() {
+        let response = crate::proto::kiapi::common::ApiResponse {
+            header: None,
+            status: None,
+            message: Some(prost_types::Any {
+                type_url: super::envelope::type_url("kiapi.common.commands.GetVersionResponse"),
+                value: Vec::new(),
+            }),
+        };
+
+        let err = response_payload_as_any(response, "kiapi.common.commands.BeginCommitResponse")
+            .expect_err("wrong type_url must fail");
+        assert!(matches!(err, KiCadError::UnexpectedPayloadType { .. }));
     }
 
     #[test]

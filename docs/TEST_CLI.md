@@ -107,6 +107,12 @@ Show drill origin:
 cargo run --bin kicad-ipc-cli -- board-origin --type drill
 ```
 
+Start a staged commit and print commit ID:
+
+```bash
+cargo run --bin kicad-ipc-cli -- begin-commit
+```
+
 Show summary of current PCB selection by item type:
 
 ```bash

@@ -39,11 +39,11 @@ Legend:
 | Section | Proto Commands | Implemented | Coverage |
 | --- | ---: | ---: | ---: |
 | Common (base) | 6 | 4 | 67% |
-| Common editor/document | 23 | 9 | 39% |
+| Common editor/document | 23 | 10 | 43% |
 | Project manager | 5 | 3 | 60% |
 | Board editor (PCB) | 22 | 13 | 59% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **29** | **52%** |
+| **Total** | **56** | **30** | **54%** |
 
 ### Common (base)
 
@@ -66,7 +66,7 @@ Legend:
 | `SaveCopyOfDocument` | Not yet | - |
 | `RevertDocument` | Not yet | - |
 | `RunAction` | Not yet | - |
-| `BeginCommit` | Not yet | - |
+| `BeginCommit` | Implemented | `KiCadClient::begin_commit_raw`, `KiCadClient::begin_commit` |
 | `EndCommit` | Not yet | - |
 | `CreateItems` | Not yet | - |
 | `GetItems` | Implemented | `KiCadClient::get_items_raw_by_type_codes`, `KiCadClient::get_items_by_type_codes`, `KiCadClient::get_items_details_by_type_codes`, `KiCadClient::get_all_pcb_items_raw`, `KiCadClient::get_all_pcb_items`, `KiCadClient::get_all_pcb_items_details`, `KiCadClient::get_pad_netlist` |
