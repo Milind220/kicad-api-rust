@@ -34,6 +34,9 @@ enum Command {
     BoardOpen,
     NetClasses,
     TextVariables,
+    ExpandTextVariables {
+        text: Vec<String>,
+    },
     Nets,
     EnabledLayers,
     ActiveLayer,
@@ -202,6 +205,13 @@ async fn run() -> Result<(), KiCadError> {
             println!("text_variable_count={}", variables.len());
             for (name, value) in variables {
                 println!("name={} value={}", name, value);
+            }
+        }
+        Command::ExpandTextVariables { text } => {
+            let expanded = client.expand_text_variables(text.clone()).await?;
+            println!("expanded_count={}", expanded.len());
+            for (index, value) in expanded.iter().enumerate() {
+                println!("[{index}] input={} expanded={}", text[index], value);
             }
         }
         Command::Nets => {
@@ -598,6 +608,33 @@ fn parse_args() -> Result<(CliConfig, Command), KiCadError> {
         "board-open" => Command::BoardOpen,
         "net-classes" => Command::NetClasses,
         "text-variables" => Command::TextVariables,
+        "expand-text-variables" => {
+            let mut text = Vec::new();
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--text" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for expand-text-variables --text".to_string(),
+                        })?;
+                        text.push(value.clone());
+                        i += 2;
+                    }
+                    _ => {
+                        i += 1;
+                    }
+                }
+            }
+
+            if text.is_empty() {
+                return Err(KiCadError::Config {
+                    reason: "expand-text-variables requires one or more `--text <value>` arguments"
+                        .to_string(),
+                });
+            }
+
+            Command::ExpandTextVariables { text }
+        }
         "nets" => Command::Nets,
         "enabled-layers" => Command::EnabledLayers,
         "active-layer" => Command::ActiveLayer,
@@ -933,7 +970,7 @@ fn default_config() -> CliConfig {
 
 fn print_help() {
     println!(
-        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  net-classes                  List project netclass definitions\n  text-variables               List text variables for current board document\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  types-pcb                    List PCB KiCad object type IDs from proto enum\n  items-raw --type-id <id> ... Dump raw Any payloads for requested item type IDs\n  items-raw-all-pcb [--debug]  Dump all PCB item payloads across all PCB object types\n  pad-shape-polygon --pad-id <uuid> ... --layer-id <i32> [--debug]\n                               Dump pad polygons on a target layer\n  padstack-presence --item-id <uuid> ... --layer-id <i32> ... [--debug]\n                               Check padstack shape presence matrix across layers\n  title-block                  Show title block fields\n  board-as-string              Dump board as KiCad s-expression text\n  selection-as-string          Dump current selection as KiCad s-expression text\n  stackup                      Show typed board stackup\n  graphics-defaults            Show typed graphics defaults\n  appearance                   Show typed editor appearance settings\n  netclass                     Show typed netclass map for current board nets\n  proto-coverage-board-read    Print board-read command coverage vs proto\n  board-read-report [--out P]  Write markdown board reconstruction report\n  enabled-layers               List enabled board layers\n  active-layer                 Show active board layer\n  visible-layers               Show currently visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
+        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  net-classes                  List project netclass definitions\n  text-variables               List text variables for current board document\n  expand-text-variables        Expand variables in provided text values\n                               Options: --text <value> (repeatable)\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  types-pcb                    List PCB KiCad object type IDs from proto enum\n  items-raw --type-id <id> ... Dump raw Any payloads for requested item type IDs\n  items-raw-all-pcb [--debug]  Dump all PCB item payloads across all PCB object types\n  pad-shape-polygon --pad-id <uuid> ... --layer-id <i32> [--debug]\n                               Dump pad polygons on a target layer\n  padstack-presence --item-id <uuid> ... --layer-id <i32> ... [--debug]\n                               Check padstack shape presence matrix across layers\n  title-block                  Show title block fields\n  board-as-string              Dump board as KiCad s-expression text\n  selection-as-string          Dump current selection as KiCad s-expression text\n  stackup                      Show typed board stackup\n  graphics-defaults            Show typed graphics defaults\n  appearance                   Show typed editor appearance settings\n  netclass                     Show typed netclass map for current board nets\n  proto-coverage-board-read    Print board-read command coverage vs proto\n  board-read-report [--out P]  Write markdown board reconstruction report\n  enabled-layers               List enabled board layers\n  active-layer                 Show active board layer\n  visible-layers               Show currently visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
     );
 }
 
@@ -1345,6 +1382,11 @@ fn proto_coverage_board_read_rows() -> Vec<(&'static str, &'static str, &'static
             "kiapi.common.commands.GetTextVariables",
             "implemented",
             "get_text_variables_raw/get_text_variables",
+        ),
+        (
+            "kiapi.common.commands.ExpandTextVariables",
+            "implemented",
+            "expand_text_variables_raw/expand_text_variables",
         ),
         (
             "kiapi.common.commands.GetItems",

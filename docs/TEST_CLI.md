@@ -59,6 +59,12 @@ List text variables for current board document:
 cargo run --bin kicad-ipc-cli -- text-variables
 ```
 
+Expand text variables in one or more input strings:
+
+```bash
+cargo run --bin kicad-ipc-cli -- expand-text-variables --text "${TITLE}" --text "${REVISION}"
+```
+
 List enabled board layers:
 
 ```bash

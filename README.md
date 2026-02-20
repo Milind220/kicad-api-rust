@@ -40,10 +40,10 @@ Legend:
 | --- | ---: | ---: | ---: |
 | Common (base) | 6 | 2 | 33% |
 | Common editor/document | 23 | 9 | 39% |
-| Project manager | 5 | 2 | 40% |
+| Project manager | 5 | 3 | 60% |
 | Board editor (PCB) | 22 | 13 | 59% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **26** | **46%** |
+| **Total** | **56** | **27** | **48%** |
 
 ### Common (base)
 
@@ -90,7 +90,7 @@ Legend:
 | --- | --- | --- |
 | `GetNetClasses` | Implemented | `KiCadClient::get_net_classes_raw`, `KiCadClient::get_net_classes` |
 | `SetNetClasses` | Not yet | - |
-| `ExpandTextVariables` | Not yet | - |
+| `ExpandTextVariables` | Implemented | `KiCadClient::expand_text_variables_raw`, `KiCadClient::expand_text_variables` |
 | `GetTextVariables` | Implemented | `KiCadClient::get_text_variables_raw`, `KiCadClient::get_text_variables` |
 | `SetTextVariables` | Not yet | - |
 

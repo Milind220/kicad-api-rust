@@ -37,6 +37,7 @@ const CMD_PING: &str = "kiapi.common.commands.Ping";
 const CMD_GET_VERSION: &str = "kiapi.common.commands.GetVersion";
 const CMD_GET_NET_CLASSES: &str = "kiapi.common.commands.GetNetClasses";
 const CMD_GET_TEXT_VARIABLES: &str = "kiapi.common.commands.GetTextVariables";
+const CMD_EXPAND_TEXT_VARIABLES: &str = "kiapi.common.commands.ExpandTextVariables";
 const CMD_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocuments";
 const CMD_GET_NETS: &str = "kiapi.board.commands.GetNets";
 const CMD_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.GetBoardEnabledLayers";
@@ -65,6 +66,8 @@ const CMD_SAVE_SELECTION_TO_STRING: &str = "kiapi.common.commands.SaveSelectionT
 const RES_GET_VERSION: &str = "kiapi.common.commands.GetVersionResponse";
 const RES_NET_CLASSES_RESPONSE: &str = "kiapi.common.commands.NetClassesResponse";
 const RES_TEXT_VARIABLES: &str = "kiapi.common.project.TextVariables";
+const RES_EXPAND_TEXT_VARIABLES_RESPONSE: &str =
+    "kiapi.common.commands.ExpandTextVariablesResponse";
 const RES_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocumentsResponse";
 const RES_GET_NETS: &str = "kiapi.board.commands.NetsResponse";
 const RES_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.BoardEnabledLayersResponse";
@@ -357,6 +360,30 @@ impl KiCadClient {
         let payload = self.get_text_variables_raw().await?;
         let response: common_project::TextVariables = decode_any(&payload, RES_TEXT_VARIABLES)?;
         Ok(response.variables.into_iter().collect())
+    }
+
+    pub async fn expand_text_variables_raw(
+        &self,
+        text: Vec<String>,
+    ) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::ExpandTextVariables {
+            document: Some(self.current_board_document_proto().await?),
+            text,
+        };
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_EXPAND_TEXT_VARIABLES))
+            .await?;
+        response_payload_as_any(response, RES_EXPAND_TEXT_VARIABLES_RESPONSE)
+    }
+
+    pub async fn expand_text_variables(
+        &self,
+        text: Vec<String>,
+    ) -> Result<Vec<String>, KiCadError> {
+        let payload = self.expand_text_variables_raw(text).await?;
+        let response: common_commands::ExpandTextVariablesResponse =
+            decode_any(&payload, RES_EXPAND_TEXT_VARIABLES_RESPONSE)?;
+        Ok(response.text)
     }
 
     pub async fn get_current_project_path(&self) -> Result<PathBuf, KiCadError> {
