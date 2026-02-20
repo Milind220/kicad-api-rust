@@ -42,6 +42,7 @@ const CMD_GET_PLUGIN_SETTINGS_PATH: &str = "kiapi.common.commands.GetPluginSetti
 const CMD_GET_NET_CLASSES: &str = "kiapi.common.commands.GetNetClasses";
 const CMD_SET_NET_CLASSES: &str = "kiapi.common.commands.SetNetClasses";
 const CMD_GET_TEXT_VARIABLES: &str = "kiapi.common.commands.GetTextVariables";
+const CMD_SET_TEXT_VARIABLES: &str = "kiapi.common.commands.SetTextVariables";
 const CMD_EXPAND_TEXT_VARIABLES: &str = "kiapi.common.commands.ExpandTextVariables";
 const CMD_GET_TEXT_EXTENTS: &str = "kiapi.common.commands.GetTextExtents";
 const CMD_GET_TEXT_AS_SHAPES: &str = "kiapi.common.commands.GetTextAsShapes";
@@ -507,6 +508,33 @@ impl KiCadClient {
         let payload = self.get_text_variables_raw().await?;
         let response: common_project::TextVariables = decode_any(&payload, RES_TEXT_VARIABLES)?;
         Ok(response.variables.into_iter().collect())
+    }
+
+    pub async fn set_text_variables_raw(
+        &self,
+        variables: BTreeMap<String, String>,
+        merge_mode: MapMergeMode,
+    ) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::SetTextVariables {
+            document: Some(self.current_board_document_proto().await?),
+            variables: Some(common_project::TextVariables {
+                variables: variables.into_iter().collect(),
+            }),
+            merge_mode: map_merge_mode_to_proto(merge_mode),
+        };
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_SET_TEXT_VARIABLES))
+            .await?;
+        response_payload_as_any(response, RES_PROTOBUF_EMPTY)
+    }
+
+    pub async fn set_text_variables(
+        &self,
+        variables: BTreeMap<String, String>,
+        merge_mode: MapMergeMode,
+    ) -> Result<BTreeMap<String, String>, KiCadError> {
+        let _ = self.set_text_variables_raw(variables, merge_mode).await?;
+        self.get_text_variables().await
     }
 
     pub async fn expand_text_variables_raw(

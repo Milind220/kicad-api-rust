@@ -44,6 +44,7 @@ Deferred manual/runtime verification (implemented after 2026-02-20 while user un
 - `DeleteItems`
 - `ParseAndCreateItemsFromString`
 - `SetNetClasses`
+- `SetTextVariables`
 
 ## KiCad v10 RC1.1 API Completion Matrix
 
@@ -65,10 +66,10 @@ Legend:
 | --- | ---: | ---: | ---: |
 | Common (base) | 6 | 6 | 100% |
 | Common editor/document | 23 | 23 | 100% |
-| Project manager | 5 | 4 | 80% |
+| Project manager | 5 | 5 | 100% |
 | Board editor (PCB) | 22 | 20 | 91% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **53** | **95%** |
+| **Total** | **56** | **54** | **96%** |
 
 ### Common (base)
 
@@ -117,7 +118,7 @@ Legend:
 | `SetNetClasses` | Implemented | `KiCadClient::set_net_classes_raw`, `KiCadClient::set_net_classes` |
 | `ExpandTextVariables` | Implemented | `KiCadClient::expand_text_variables_raw`, `KiCadClient::expand_text_variables` |
 | `GetTextVariables` | Implemented | `KiCadClient::get_text_variables_raw`, `KiCadClient::get_text_variables` |
-| `SetTextVariables` | Not yet | - |
+| `SetTextVariables` | Implemented | `KiCadClient::set_text_variables_raw`, `KiCadClient::set_text_variables` |
 
 ### Board editor (PCB)
 

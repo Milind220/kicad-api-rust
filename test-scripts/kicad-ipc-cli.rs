@@ -46,6 +46,10 @@ enum Command {
         merge_mode: MapMergeMode,
     },
     TextVariables,
+    SetTextVariables {
+        merge_mode: MapMergeMode,
+        variables: BTreeMap<String, String>,
+    },
     ExpandTextVariables {
         text: Vec<String>,
     },
@@ -312,6 +316,20 @@ async fn run() -> Result<(), KiCadError> {
             let variables = client.get_text_variables().await?;
             println!("text_variable_count={}", variables.len());
             for (name, value) in variables {
+                println!("name={} value={}", name, value);
+            }
+        }
+        Command::SetTextVariables {
+            merge_mode,
+            variables,
+        } => {
+            let updated = client.set_text_variables(variables, merge_mode).await?;
+            println!(
+                "text_variable_count={} merge_mode={}",
+                updated.len(),
+                merge_mode
+            );
+            for (name, value) in updated {
                 println!("name={} value={}", name, value);
             }
         }
@@ -991,6 +1009,40 @@ fn parse_args_from(mut args: Vec<String>) -> Result<(CliConfig, Command), KiCadE
             Command::SetNetClasses { merge_mode }
         }
         "text-variables" => Command::TextVariables,
+        "set-text-variables" => {
+            let mut merge_mode = MapMergeMode::Merge;
+            let mut variables = BTreeMap::new();
+            let mut i = 1;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--merge-mode" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for set-text-variables --merge-mode".to_string(),
+                        })?;
+                        merge_mode = MapMergeMode::from_str(value)
+                            .map_err(|reason| KiCadError::Config { reason })?;
+                        i += 2;
+                    }
+                    "--var" => {
+                        let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                            reason: "missing value for set-text-variables --var".to_string(),
+                        })?;
+                        let (name, text) =
+                            value.split_once('=').ok_or_else(|| KiCadError::Config {
+                                reason: "set-text-variables --var requires `<name>=<value>`"
+                                    .to_string(),
+                            })?;
+                        variables.insert(name.to_string(), text.to_string());
+                        i += 2;
+                    }
+                    _ => i += 1,
+                }
+            }
+            Command::SetTextVariables {
+                merge_mode,
+                variables,
+            }
+        }
         "expand-text-variables" => {
             let mut text = Vec::new();
             let mut i = 1;
@@ -1994,7 +2046,7 @@ fn default_config() -> CliConfig {
 
 fn print_help() {
     println!(
-        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--client-name NAME] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  kicad-binary-path [--binary-name <name>]\n                               Resolve absolute path for a KiCad binary (default: kicad-cli)\n  plugin-settings-path [--identifier <id>]\n                               Resolve writeable plugin settings directory (default: kicad-ipc-rust)\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  net-classes                  List project netclass definitions\n  set-net-classes [--merge-mode <merge|replace>]\n                               Write current netclass set back with selected merge mode\n  text-variables               List text variables for current board document\n  expand-text-variables        Expand variables in provided text values\n                               Options: --text <value> (repeatable)\n  text-extents                 Measure text bounding box\n                               Options: --text <value>\n  text-as-shapes               Convert text to rendered shapes\n                               Options: --text <value> (repeatable)\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  types-pcb                    List PCB KiCad object type IDs from proto enum\n  items-raw --type-id <id> ... Dump raw Any payloads for requested item type IDs\n  items-raw-all-pcb [--debug]  Dump all PCB item payloads across all PCB object types\n  pad-shape-polygon --pad-id <uuid> ... --layer-id <i32> [--debug]\n                               Dump pad polygons on a target layer\n  padstack-presence --item-id <uuid> ... --layer-id <i32> ... [--debug]\n                               Check padstack shape presence matrix across layers\n  title-block                  Show title block fields\n  board-as-string              Dump board as KiCad s-expression text\n  selection-as-string          Dump current selection as KiCad s-expression text\n  stackup                      Show typed board stackup\n  graphics-defaults            Show typed graphics defaults\n  appearance                   Show typed editor appearance settings\n  set-appearance --inactive-layer-display <normal|dimmed|hidden>\n                 --net-color-display <all|ratsnest|off>\n                 --board-flip <normal|flipped-x>\n                 --ratsnest-display <all-layers|visible-layers>\n                               Set editor appearance settings\n  inject-drc-error --severity <s> --message <text> [--x-nm <i64> --y-nm <i64>] [--item-id <uuid> ...]\n                               Inject a DRC marker (severity: warning|error|exclusion|ignore|info|action|debug|undefined)\n  refill-zones [--zone-id <uuid> ...]\n                               Refill all zones or a provided subset\n  netclass                     Show typed netclass map for current board nets\n  proto-coverage-board-read    Print board-read command coverage vs proto\n  board-read-report [--out P]  Write markdown board reconstruction report\n  enabled-layers               List enabled board layers\n  set-enabled-layers --copper-layer-count <u32> [--layer-id <i32> ...]\n                               Set enabled board layer set\n  active-layer                 Show active board layer\n  set-active-layer --layer-id <i32>\n                               Set active board layer\n  visible-layers               Show currently visible board layers\n  set-visible-layers --layer-id <i32> ...\n                               Set visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  set-board-origin --type <t> --x-nm <i64> --y-nm <i64>\n                               Set board origin (`grid` or `drill`)\n  refresh-editor [--frame <f>] Refresh a specific editor frame (default: pcb)\n  begin-commit                 Start staged commit and print commit ID\n  end-commit --id <uuid> [--action <commit|drop>] [--message <text>]\n                               End staged commit with commit/drop action\n  save-doc                     Save current board document\n  save-copy --path <path> [--overwrite] [--include-project]\n                               Save current board document to a new location\n  revert-doc                   Revert current board document from disk\n  run-action --action <name>   Run a raw KiCad tool action\n  create-items --item <type_url>=<hex> ... [--container-id <uuid>]\n                               Create raw Any payload items in current board document\n  update-items --item <type_url>=<hex> ...\n                               Update raw Any payload items in current board document\n  delete-items --id <uuid> ...\n                               Delete item IDs from current board document\n  parse-create-items --contents <sexpr>\n                               Parse s-expression and create resulting items\n  add-to-selection --id <uuid> ...\n                               Add items to current selection\n  remove-from-selection --id <uuid> ...\n                               Remove items from current selection\n  clear-selection              Clear current item selection\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
+        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--client-name NAME] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  kicad-binary-path [--binary-name <name>]\n                               Resolve absolute path for a KiCad binary (default: kicad-cli)\n  plugin-settings-path [--identifier <id>]\n                               Resolve writeable plugin settings directory (default: kicad-ipc-rust)\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  net-classes                  List project netclass definitions\n  set-net-classes [--merge-mode <merge|replace>]\n                               Write current netclass set back with selected merge mode\n  text-variables               List text variables for current board document\n  set-text-variables [--merge-mode <merge|replace>] [--var <name=value> ...]\n                               Set text variables for current board document\n  expand-text-variables        Expand variables in provided text values\n                               Options: --text <value> (repeatable)\n  text-extents                 Measure text bounding box\n                               Options: --text <value>\n  text-as-shapes               Convert text to rendered shapes\n                               Options: --text <value> (repeatable)\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  types-pcb                    List PCB KiCad object type IDs from proto enum\n  items-raw --type-id <id> ... Dump raw Any payloads for requested item type IDs\n  items-raw-all-pcb [--debug]  Dump all PCB item payloads across all PCB object types\n  pad-shape-polygon --pad-id <uuid> ... --layer-id <i32> [--debug]\n                               Dump pad polygons on a target layer\n  padstack-presence --item-id <uuid> ... --layer-id <i32> ... [--debug]\n                               Check padstack shape presence matrix across layers\n  title-block                  Show title block fields\n  board-as-string              Dump board as KiCad s-expression text\n  selection-as-string          Dump current selection as KiCad s-expression text\n  stackup                      Show typed board stackup\n  graphics-defaults            Show typed graphics defaults\n  appearance                   Show typed editor appearance settings\n  set-appearance --inactive-layer-display <normal|dimmed|hidden>\n                 --net-color-display <all|ratsnest|off>\n                 --board-flip <normal|flipped-x>\n                 --ratsnest-display <all-layers|visible-layers>\n                               Set editor appearance settings\n  inject-drc-error --severity <s> --message <text> [--x-nm <i64> --y-nm <i64>] [--item-id <uuid> ...]\n                               Inject a DRC marker (severity: warning|error|exclusion|ignore|info|action|debug|undefined)\n  refill-zones [--zone-id <uuid> ...]\n                               Refill all zones or a provided subset\n  netclass                     Show typed netclass map for current board nets\n  proto-coverage-board-read    Print board-read command coverage vs proto\n  board-read-report [--out P]  Write markdown board reconstruction report\n  enabled-layers               List enabled board layers\n  set-enabled-layers --copper-layer-count <u32> [--layer-id <i32> ...]\n                               Set enabled board layer set\n  active-layer                 Show active board layer\n  set-active-layer --layer-id <i32>\n                               Set active board layer\n  visible-layers               Show currently visible board layers\n  set-visible-layers --layer-id <i32> ...\n                               Set visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  set-board-origin --type <t> --x-nm <i64> --y-nm <i64>\n                               Set board origin (`grid` or `drill`)\n  refresh-editor [--frame <f>] Refresh a specific editor frame (default: pcb)\n  begin-commit                 Start staged commit and print commit ID\n  end-commit --id <uuid> [--action <commit|drop>] [--message <text>]\n                               End staged commit with commit/drop action\n  save-doc                     Save current board document\n  save-copy --path <path> [--overwrite] [--include-project]\n                               Save current board document to a new location\n  revert-doc                   Revert current board document from disk\n  run-action --action <name>   Run a raw KiCad tool action\n  create-items --item <type_url>=<hex> ... [--container-id <uuid>]\n                               Create raw Any payload items in current board document\n  update-items --item <type_url>=<hex> ...\n                               Update raw Any payload items in current board document\n  delete-items --id <uuid> ...\n                               Delete item IDs from current board document\n  parse-create-items --contents <sexpr>\n                               Parse s-expression and create resulting items\n  add-to-selection --id <uuid> ...\n                               Add items to current selection\n  remove-from-selection --id <uuid> ...\n                               Remove items from current selection\n  clear-selection              Clear current item selection\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
     );
 }
 
@@ -2740,6 +2792,29 @@ mod tests {
         match command {
             Command::SetNetClasses { merge_mode } => {
                 assert_eq!(merge_mode, kicad_ipc::MapMergeMode::Replace)
+            }
+            other => panic!("unexpected command variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_args_parses_set_text_variables() {
+        let (_, command) = parse_args_from(vec![
+            "set-text-variables".to_string(),
+            "--merge-mode".to_string(),
+            "replace".to_string(),
+            "--var".to_string(),
+            "REV=A".to_string(),
+        ])
+        .expect("set-text-variables args should parse");
+
+        match command {
+            Command::SetTextVariables {
+                merge_mode,
+                variables,
+            } => {
+                assert_eq!(merge_mode, kicad_ipc::MapMergeMode::Replace);
+                assert_eq!(variables.get("REV").map(|value| value.as_str()), Some("A"));
             }
             other => panic!("unexpected command variant: {other:?}"),
         }

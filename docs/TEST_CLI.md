@@ -77,6 +77,12 @@ List text variables for current board document:
 cargo run --bin kicad-ipc-cli -- text-variables
 ```
 
+Set text variables:
+
+```bash
+cargo run --bin kicad-ipc-cli -- set-text-variables --merge-mode merge --var REV=A
+```
+
 Expand text variables in one or more input strings:
 
 ```bash
