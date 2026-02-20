@@ -4,16 +4,13 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Rust client library for the KiCad IPC API (async-first)"
-repository = "https://github.com/Milind220/kicad-api-rust"
-homepage = "https://github.com/Milind220/kicad-api-rust"
+repository = "https://github.com/Milind220/kicad-ipc-rs"
+homepage = "https://github.com/Milind220/kicad-ipc-rs"
 readme = "README.md"
 keywords = ["kicad", "eda", "pcb", "ipc"]
 categories = ["api-bindings", "asynchronous"]
 include = [
     "/src/**",
-    "/kicad/api/proto/**",
-    "/.gitmodules",
-    "/build.rs",
     "/README.md",
     "/LICENSE",
     "/Cargo.toml",
@@ -32,6 +29,3 @@ prost-types = { version = "0.14.1", optional = true }
 thiserror = "2.0.12"
 tokio = { version = "1.48.0", features = ["sync", "time", "rt", "macros"], optional = true }
 tracing = { version = "0.1.41", optional = true }
-
-[build-dependencies]
-prost-build = "0.14.1"

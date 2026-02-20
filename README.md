@@ -13,21 +13,12 @@ Alpha. `v0.1.0` release candidate.
 - Real-world user testing: still limited.
 - Issues and PRs welcome.
 
-## Build Inputs
+## Protobuf Source
 
-This crate compiles protobuf definitions from a KiCad git submodule:
+This crate ships checked-in Rust protobuf output under `src/proto/generated/`.
 
-```bash
-git submodule update --init --recursive
-```
-
-Default proto root: `kicad/api/proto`
-
-Optional override:
-
-```bash
-KICAD_PROTO_ROOT=/absolute/path/to/api/proto cargo build
-```
+- Consumers do **not** need KiCad source checkout or git submodules.
+- Maintainers can regenerate bindings from upstream KiCad proto as needed.
 
 ## Local Testing
 
