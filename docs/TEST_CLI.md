@@ -169,6 +169,12 @@ Show raw protobuf payload bytes for selected items:
 cargo run --bin kicad-ipc-cli -- selection-raw
 ```
 
+Clear current selection:
+
+```bash
+cargo run --bin kicad-ipc-cli -- clear-selection
+```
+
 Show pad-level netlist entries (footprint/pad/net):
 
 ```bash
