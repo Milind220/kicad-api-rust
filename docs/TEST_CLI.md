@@ -53,6 +53,12 @@ List project net classes:
 cargo run --bin kicad-ipc-cli -- net-classes
 ```
 
+List text variables for current board document:
+
+```bash
+cargo run --bin kicad-ipc-cli -- text-variables
+```
+
 List enabled board layers:
 
 ```bash
