@@ -48,6 +48,9 @@ enum Command {
     Nets,
     EnabledLayers,
     ActiveLayer,
+    SetActiveLayer {
+        layer_id: i32,
+    },
     VisibleLayers,
     BoardOrigin {
         kind: BoardOriginKind,
@@ -305,6 +308,10 @@ async fn run() -> Result<(), KiCadError> {
                 "active_layer_id={} active_layer_name={}",
                 layer.id, layer.name
             );
+        }
+        Command::SetActiveLayer { layer_id } => {
+            client.set_active_layer(layer_id).await?;
+            println!("set_active_layer_id={}", layer_id);
         }
         Command::VisibleLayers => {
             let layers = client.get_visible_layers().await?;
@@ -784,6 +791,28 @@ fn parse_args_from(mut args: Vec<String>) -> Result<(CliConfig, Command), KiCadE
         "nets" => Command::Nets,
         "enabled-layers" => Command::EnabledLayers,
         "active-layer" => Command::ActiveLayer,
+        "set-active-layer" => {
+            let mut layer_id = None;
+            let mut i = 1;
+            while i < args.len() {
+                if args[i] == "--layer-id" {
+                    let value = args.get(i + 1).ok_or_else(|| KiCadError::Config {
+                        reason: "missing value for set-active-layer --layer-id".to_string(),
+                    })?;
+                    layer_id = Some(value.parse::<i32>().map_err(|err| KiCadError::Config {
+                        reason: format!("invalid set-active-layer --layer-id `{value}`: {err}"),
+                    })?);
+                    i += 2;
+                    continue;
+                }
+                i += 1;
+            }
+            Command::SetActiveLayer {
+                layer_id: layer_id.ok_or_else(|| KiCadError::Config {
+                    reason: "set-active-layer requires `--layer-id <i32>`".to_string(),
+                })?,
+            }
+        }
         "visible-layers" => Command::VisibleLayers,
         "board-origin" => {
             let mut kind = BoardOriginKind::Grid;
@@ -1178,7 +1207,7 @@ fn default_config() -> CliConfig {
 
 fn print_help() {
     println!(
-        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--client-name NAME] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  net-classes                  List project netclass definitions\n  text-variables               List text variables for current board document\n  expand-text-variables        Expand variables in provided text values\n                               Options: --text <value> (repeatable)\n  text-extents                 Measure text bounding box\n                               Options: --text <value>\n  text-as-shapes               Convert text to rendered shapes\n                               Options: --text <value> (repeatable)\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  types-pcb                    List PCB KiCad object type IDs from proto enum\n  items-raw --type-id <id> ... Dump raw Any payloads for requested item type IDs\n  items-raw-all-pcb [--debug]  Dump all PCB item payloads across all PCB object types\n  pad-shape-polygon --pad-id <uuid> ... --layer-id <i32> [--debug]\n                               Dump pad polygons on a target layer\n  padstack-presence --item-id <uuid> ... --layer-id <i32> ... [--debug]\n                               Check padstack shape presence matrix across layers\n  title-block                  Show title block fields\n  board-as-string              Dump board as KiCad s-expression text\n  selection-as-string          Dump current selection as KiCad s-expression text\n  stackup                      Show typed board stackup\n  graphics-defaults            Show typed graphics defaults\n  appearance                   Show typed editor appearance settings\n  netclass                     Show typed netclass map for current board nets\n  proto-coverage-board-read    Print board-read command coverage vs proto\n  board-read-report [--out P]  Write markdown board reconstruction report\n  enabled-layers               List enabled board layers\n  active-layer                 Show active board layer\n  visible-layers               Show currently visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  refresh-editor [--frame <f>] Refresh a specific editor frame (default: pcb)\n  begin-commit                 Start staged commit and print commit ID\n  end-commit --id <uuid> [--action <commit|drop>] [--message <text>]\n                               End staged commit with commit/drop action\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
+        "kicad-ipc-cli\n\nUSAGE:\n  cargo run --bin kicad-ipc-cli -- [--socket URI] [--token TOKEN] [--client-name NAME] [--timeout-ms N] <command> [command options]\n\nCOMMANDS:\n  ping                         Check IPC connectivity\n  version                      Fetch KiCad version\n  open-docs [--type <type>]    List open docs (default type: pcb)\n  project-path                 Get current project path from open PCB docs\n  board-open                   Exit non-zero if no PCB doc is open\n  net-classes                  List project netclass definitions\n  text-variables               List text variables for current board document\n  expand-text-variables        Expand variables in provided text values\n                               Options: --text <value> (repeatable)\n  text-extents                 Measure text bounding box\n                               Options: --text <value>\n  text-as-shapes               Convert text to rendered shapes\n                               Options: --text <value> (repeatable)\n  nets                         List board nets (requires one open PCB)\n  netlist-pads                 Emit pad-level netlist data (with footprint context)\n  items-by-id --id <uuid> ...  Show parsed details for specific item IDs\n  item-bbox --id <uuid> ...    Show bounding boxes for item IDs\n  hit-test --id <uuid> --x-nm <x> --y-nm <y> [--tolerance-nm <n>]\n                               Hit-test one item at a point\n  types-pcb                    List PCB KiCad object type IDs from proto enum\n  items-raw --type-id <id> ... Dump raw Any payloads for requested item type IDs\n  items-raw-all-pcb [--debug]  Dump all PCB item payloads across all PCB object types\n  pad-shape-polygon --pad-id <uuid> ... --layer-id <i32> [--debug]\n                               Dump pad polygons on a target layer\n  padstack-presence --item-id <uuid> ... --layer-id <i32> ... [--debug]\n                               Check padstack shape presence matrix across layers\n  title-block                  Show title block fields\n  board-as-string              Dump board as KiCad s-expression text\n  selection-as-string          Dump current selection as KiCad s-expression text\n  stackup                      Show typed board stackup\n  graphics-defaults            Show typed graphics defaults\n  appearance                   Show typed editor appearance settings\n  netclass                     Show typed netclass map for current board nets\n  proto-coverage-board-read    Print board-read command coverage vs proto\n  board-read-report [--out P]  Write markdown board reconstruction report\n  enabled-layers               List enabled board layers\n  active-layer                 Show active board layer\n  set-active-layer --layer-id <i32>\n                               Set active board layer\n  visible-layers               Show currently visible board layers\n  board-origin [--type <t>]    Show board origin (`grid` default, or `drill`)\n  refresh-editor [--frame <f>] Refresh a specific editor frame (default: pcb)\n  begin-commit                 Start staged commit and print commit ID\n  end-commit --id <uuid> [--action <commit|drop>] [--message <text>]\n                               End staged commit with commit/drop action\n  selection-summary            Show current selection item type counts\n  selection-details            Show parsed details for selected items\n  selection-raw                Show raw Any payload bytes for selected items\n  smoke                        ping + version + board-open summary\n  help                         Show help\n\nTYPES:\n  schematic | symbol | pcb | footprint | drawing-sheet | project\n"
     );
 }
 
@@ -1786,6 +1815,21 @@ mod tests {
             Command::RefreshEditor { frame } => {
                 assert_eq!(frame.to_string(), "schematic");
             }
+            other => panic!("unexpected command variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_args_parses_set_active_layer() {
+        let (_, command) = parse_args_from(vec![
+            "set-active-layer".to_string(),
+            "--layer-id".to_string(),
+            "31".to_string(),
+        ])
+        .expect("set-active-layer args should parse");
+
+        match command {
+            Command::SetActiveLayer { layer_id } => assert_eq!(layer_id, 31),
             other => panic!("unexpected command variant: {other:?}"),
         }
     }

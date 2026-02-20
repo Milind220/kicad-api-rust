@@ -89,6 +89,12 @@ Show active layer:
 cargo run --bin kicad-ipc-cli -- active-layer
 ```
 
+Set active layer:
+
+```bash
+cargo run --bin kicad-ipc-cli -- set-active-layer --layer-id 0
+```
+
 Show visible layers:
 
 ```bash

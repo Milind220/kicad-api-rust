@@ -47,6 +47,7 @@ const CMD_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocuments";
 const CMD_GET_NETS: &str = "kiapi.board.commands.GetNets";
 const CMD_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.GetBoardEnabledLayers";
 const CMD_GET_ACTIVE_LAYER: &str = "kiapi.board.commands.GetActiveLayer";
+const CMD_SET_ACTIVE_LAYER: &str = "kiapi.board.commands.SetActiveLayer";
 const CMD_GET_VISIBLE_LAYERS: &str = "kiapi.board.commands.GetVisibleLayers";
 const CMD_GET_BOARD_ORIGIN: &str = "kiapi.board.commands.GetBoardOrigin";
 const CMD_GET_BOARD_STACKUP: &str = "kiapi.board.commands.GetBoardStackup";
@@ -579,6 +580,18 @@ impl KiCadClient {
             envelope::unpack_any(&response, RES_BOARD_LAYER_RESPONSE)?;
 
         Ok(layer_to_model(payload.layer))
+    }
+
+    pub async fn set_active_layer(&self, layer_id: i32) -> Result<(), KiCadError> {
+        let board = self.current_board_document_proto().await?;
+        let command = board_commands::SetActiveLayer {
+            board: Some(board),
+            layer: layer_id,
+        };
+
+        self.send_command(envelope::pack_any(&command, CMD_SET_ACTIVE_LAYER))
+            .await?;
+        Ok(())
     }
 
     pub async fn get_visible_layers(&self) -> Result<Vec<BoardLayerInfo>, KiCadError> {
