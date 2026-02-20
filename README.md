@@ -34,6 +34,7 @@ Commands wrapped in this crate but currently unhandled/unsupported by this KiCad
 Deferred manual/runtime verification (implemented after 2026-02-20 while user unavailable):
 
 - `GetKiCadBinaryPath`
+- `GetPluginSettingsPath`
 
 ## KiCad v10 RC1.1 API Completion Matrix
 
@@ -53,12 +54,12 @@ Legend:
 
 | Section | Proto Commands | Implemented | Coverage |
 | --- | ---: | ---: | ---: |
-| Common (base) | 6 | 5 | 83% |
+| Common (base) | 6 | 6 | 100% |
 | Common editor/document | 23 | 15 | 65% |
 | Project manager | 5 | 3 | 60% |
 | Board editor (PCB) | 22 | 20 | 91% |
 | Schematic editor (dedicated proto commands) | 0 | 0 | n/a |
-| **Total** | **56** | **43** | **77%** |
+| **Total** | **56** | **44** | **79%** |
 
 ### Common (base)
 
@@ -69,7 +70,7 @@ Legend:
 | `GetKiCadBinaryPath` | Implemented | `KiCadClient::get_kicad_binary_path_raw`, `KiCadClient::get_kicad_binary_path` |
 | `GetTextExtents` | Implemented | `KiCadClient::get_text_extents_raw`, `KiCadClient::get_text_extents` |
 | `GetTextAsShapes` | Implemented | `KiCadClient::get_text_as_shapes_raw`, `KiCadClient::get_text_as_shapes` |
-| `GetPluginSettingsPath` | Not yet | - |
+| `GetPluginSettingsPath` | Implemented | `KiCadClient::get_plugin_settings_path_raw`, `KiCadClient::get_plugin_settings_path` |
 
 ### Common editor/document
 

@@ -35,6 +35,12 @@ Resolve KiCad binary path (default `kicad-cli`):
 cargo run --bin kicad-ipc-cli -- kicad-binary-path --binary-name kicad-cli
 ```
 
+Resolve plugin settings path (default identifier `kicad-ipc-rust`):
+
+```bash
+cargo run --bin kicad-ipc-cli -- plugin-settings-path --identifier kicad-ipc-rust
+```
+
 List open PCB docs:
 
 ```bash

@@ -38,6 +38,7 @@ const KICAD_API_TOKEN_ENV: &str = "KICAD_API_TOKEN";
 const CMD_PING: &str = "kiapi.common.commands.Ping";
 const CMD_GET_VERSION: &str = "kiapi.common.commands.GetVersion";
 const CMD_GET_KICAD_BINARY_PATH: &str = "kiapi.common.commands.GetKiCadBinaryPath";
+const CMD_GET_PLUGIN_SETTINGS_PATH: &str = "kiapi.common.commands.GetPluginSettingsPath";
 const CMD_GET_NET_CLASSES: &str = "kiapi.common.commands.GetNetClasses";
 const CMD_GET_TEXT_VARIABLES: &str = "kiapi.common.commands.GetTextVariables";
 const CMD_EXPAND_TEXT_VARIABLES: &str = "kiapi.common.commands.ExpandTextVariables";
@@ -84,6 +85,7 @@ const CMD_SAVE_SELECTION_TO_STRING: &str = "kiapi.common.commands.SaveSelectionT
 
 const RES_GET_VERSION: &str = "kiapi.common.commands.GetVersionResponse";
 const RES_PATH_RESPONSE: &str = "kiapi.common.commands.PathResponse";
+const RES_STRING_RESPONSE: &str = "kiapi.common.commands.StringResponse";
 const RES_NET_CLASSES_RESPONSE: &str = "kiapi.common.commands.NetClassesResponse";
 const RES_TEXT_VARIABLES: &str = "kiapi.common.project.TextVariables";
 const RES_EXPAND_TEXT_VARIABLES_RESPONSE: &str =
@@ -359,6 +361,28 @@ impl KiCadClient {
         let payload = self.get_kicad_binary_path_raw(binary_name).await?;
         let response: common_commands::PathResponse = decode_any(&payload, RES_PATH_RESPONSE)?;
         Ok(response.path)
+    }
+
+    pub async fn get_plugin_settings_path_raw(
+        &self,
+        identifier: impl Into<String>,
+    ) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::GetPluginSettingsPath {
+            identifier: identifier.into(),
+        };
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_PLUGIN_SETTINGS_PATH))
+            .await?;
+        response_payload_as_any(response, RES_STRING_RESPONSE)
+    }
+
+    pub async fn get_plugin_settings_path(
+        &self,
+        identifier: impl Into<String>,
+    ) -> Result<String, KiCadError> {
+        let payload = self.get_plugin_settings_path_raw(identifier).await?;
+        let response: common_commands::StringResponse = decode_any(&payload, RES_STRING_RESPONSE)?;
+        Ok(response.response)
     }
 
     pub async fn get_open_documents(
