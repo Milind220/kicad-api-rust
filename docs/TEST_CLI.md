@@ -65,6 +65,12 @@ Expand text variables in one or more input strings:
 cargo run --bin kicad-ipc-cli -- expand-text-variables --text "${TITLE}" --text "${REVISION}"
 ```
 
+Measure text extents:
+
+```bash
+cargo run --bin kicad-ipc-cli -- text-extents --text "R1"
+```
+
 List enabled board layers:
 
 ```bash

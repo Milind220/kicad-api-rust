@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::model::board::Vector2Nm;
 use crate::proto::kiapi::common::types as common_types;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,6 +142,88 @@ pub enum ItemHitTestResult {
 pub struct PcbObjectTypeCode {
     pub code: i32,
     pub name: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextHorizontalAlignment {
+    Unknown,
+    Left,
+    Center,
+    Right,
+    Indeterminate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextVerticalAlignment {
+    Unknown,
+    Top,
+    Center,
+    Bottom,
+    Indeterminate,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextAttributesSpec {
+    pub font_name: Option<String>,
+    pub horizontal_alignment: TextHorizontalAlignment,
+    pub vertical_alignment: TextVerticalAlignment,
+    pub angle_degrees: Option<f64>,
+    pub line_spacing: Option<f64>,
+    pub stroke_width_nm: Option<i64>,
+    pub italic: bool,
+    pub bold: bool,
+    pub underlined: bool,
+    pub mirrored: bool,
+    pub multiline: bool,
+    pub keep_upright: bool,
+    pub size_nm: Option<Vector2Nm>,
+}
+
+impl Default for TextAttributesSpec {
+    fn default() -> Self {
+        Self {
+            font_name: None,
+            horizontal_alignment: TextHorizontalAlignment::Unknown,
+            vertical_alignment: TextVerticalAlignment::Unknown,
+            angle_degrees: None,
+            line_spacing: None,
+            stroke_width_nm: None,
+            italic: false,
+            bold: false,
+            underlined: false,
+            mirrored: false,
+            multiline: false,
+            keep_upright: false,
+            size_nm: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextSpec {
+    pub text: String,
+    pub position_nm: Option<Vector2Nm>,
+    pub attributes: Option<TextAttributesSpec>,
+    pub hyperlink: Option<String>,
+}
+
+impl TextSpec {
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            position_nm: None,
+            attributes: None,
+            hyperlink: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TextExtents {
+    pub x_nm: i64,
+    pub y_nm: i64,
+    pub width_nm: i64,
+    pub height_nm: i64,
 }
 
 impl std::fmt::Display for ItemHitTestResult {

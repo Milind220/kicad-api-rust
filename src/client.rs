@@ -19,7 +19,8 @@ use crate::model::board::{
 };
 use crate::model::common::{
     DocumentSpecifier, DocumentType, ItemBoundingBox, ItemHitTestResult, PcbObjectTypeCode,
-    ProjectInfo, SelectionItemDetail, SelectionSummary, SelectionTypeCount, TitleBlockInfo,
+    ProjectInfo, SelectionItemDetail, SelectionSummary, SelectionTypeCount, TextAttributesSpec,
+    TextExtents, TextHorizontalAlignment, TextSpec, TextVerticalAlignment, TitleBlockInfo,
     VersionInfo,
 };
 use crate::proto::kiapi::board as board_proto;
@@ -38,6 +39,7 @@ const CMD_GET_VERSION: &str = "kiapi.common.commands.GetVersion";
 const CMD_GET_NET_CLASSES: &str = "kiapi.common.commands.GetNetClasses";
 const CMD_GET_TEXT_VARIABLES: &str = "kiapi.common.commands.GetTextVariables";
 const CMD_EXPAND_TEXT_VARIABLES: &str = "kiapi.common.commands.ExpandTextVariables";
+const CMD_GET_TEXT_EXTENTS: &str = "kiapi.common.commands.GetTextExtents";
 const CMD_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocuments";
 const CMD_GET_NETS: &str = "kiapi.board.commands.GetNets";
 const CMD_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.GetBoardEnabledLayers";
@@ -68,6 +70,7 @@ const RES_NET_CLASSES_RESPONSE: &str = "kiapi.common.commands.NetClassesResponse
 const RES_TEXT_VARIABLES: &str = "kiapi.common.project.TextVariables";
 const RES_EXPAND_TEXT_VARIABLES_RESPONSE: &str =
     "kiapi.common.commands.ExpandTextVariablesResponse";
+const RES_BOX2: &str = "kiapi.common.types.Box2";
 const RES_GET_OPEN_DOCUMENTS: &str = "kiapi.common.commands.GetOpenDocumentsResponse";
 const RES_GET_NETS: &str = "kiapi.board.commands.NetsResponse";
 const RES_GET_BOARD_ENABLED_LAYERS: &str = "kiapi.board.commands.BoardEnabledLayersResponse";
@@ -384,6 +387,39 @@ impl KiCadClient {
         let response: common_commands::ExpandTextVariablesResponse =
             decode_any(&payload, RES_EXPAND_TEXT_VARIABLES_RESPONSE)?;
         Ok(response.text)
+    }
+
+    pub async fn get_text_extents_raw(
+        &self,
+        text: TextSpec,
+    ) -> Result<prost_types::Any, KiCadError> {
+        let command = common_commands::GetTextExtents {
+            text: Some(text_spec_to_proto(text)),
+        };
+        let response = self
+            .send_command(envelope::pack_any(&command, CMD_GET_TEXT_EXTENTS))
+            .await?;
+        response_payload_as_any(response, RES_BOX2)
+    }
+
+    pub async fn get_text_extents(&self, text: TextSpec) -> Result<TextExtents, KiCadError> {
+        let payload = self.get_text_extents_raw(text).await?;
+        let response: common_types::Box2 = decode_any(&payload, RES_BOX2)?;
+        let position = response
+            .position
+            .ok_or_else(|| KiCadError::InvalidResponse {
+                reason: "GetTextExtents response missing position".to_string(),
+            })?;
+        let size = response.size.ok_or_else(|| KiCadError::InvalidResponse {
+            reason: "GetTextExtents response missing size".to_string(),
+        })?;
+
+        Ok(TextExtents {
+            x_nm: position.x_nm,
+            y_nm: position.y_nm,
+            width_nm: size.x_nm,
+            height_nm: size.y_nm,
+        })
     }
 
     pub async fn get_current_project_path(&self) -> Result<PathBuf, KiCadError> {
@@ -1194,6 +1230,62 @@ fn model_document_to_proto(document: &DocumentSpecifier) -> common_types::Docume
     }
 }
 
+fn text_spec_to_proto(text: TextSpec) -> common_types::Text {
+    common_types::Text {
+        position: text.position_nm.map(vector2_nm_to_proto),
+        attributes: text.attributes.map(text_attributes_spec_to_proto),
+        text: text.text,
+        hyperlink: text.hyperlink.unwrap_or_default(),
+    }
+}
+
+fn text_attributes_spec_to_proto(attributes: TextAttributesSpec) -> common_types::TextAttributes {
+    common_types::TextAttributes {
+        font_name: attributes.font_name.unwrap_or_default(),
+        horizontal_alignment: text_horizontal_alignment_to_proto(attributes.horizontal_alignment),
+        vertical_alignment: text_vertical_alignment_to_proto(attributes.vertical_alignment),
+        angle: attributes
+            .angle_degrees
+            .map(|value_degrees| common_types::Angle { value_degrees }),
+        line_spacing: attributes.line_spacing.unwrap_or(1.0),
+        stroke_width: attributes
+            .stroke_width_nm
+            .map(|value_nm| common_types::Distance { value_nm }),
+        italic: attributes.italic,
+        bold: attributes.bold,
+        underlined: attributes.underlined,
+        visible: true,
+        mirrored: attributes.mirrored,
+        multiline: attributes.multiline,
+        keep_upright: attributes.keep_upright,
+        size: attributes.size_nm.map(vector2_nm_to_proto),
+    }
+}
+
+fn text_horizontal_alignment_to_proto(value: TextHorizontalAlignment) -> i32 {
+    match value {
+        TextHorizontalAlignment::Unknown => common_types::HorizontalAlignment::HaUnknown as i32,
+        TextHorizontalAlignment::Left => common_types::HorizontalAlignment::HaLeft as i32,
+        TextHorizontalAlignment::Center => common_types::HorizontalAlignment::HaCenter as i32,
+        TextHorizontalAlignment::Right => common_types::HorizontalAlignment::HaRight as i32,
+        TextHorizontalAlignment::Indeterminate => {
+            common_types::HorizontalAlignment::HaIndeterminate as i32
+        }
+    }
+}
+
+fn text_vertical_alignment_to_proto(value: TextVerticalAlignment) -> i32 {
+    match value {
+        TextVerticalAlignment::Unknown => common_types::VerticalAlignment::VaUnknown as i32,
+        TextVerticalAlignment::Top => common_types::VerticalAlignment::VaTop as i32,
+        TextVerticalAlignment::Center => common_types::VerticalAlignment::VaCenter as i32,
+        TextVerticalAlignment::Bottom => common_types::VerticalAlignment::VaBottom as i32,
+        TextVerticalAlignment::Indeterminate => {
+            common_types::VerticalAlignment::VaIndeterminate as i32
+        }
+    }
+}
+
 fn layer_to_model(layer_id: i32) -> BoardLayerInfo {
     let name = board_types::BoardLayer::try_from(layer_id)
         .map(|layer| layer.as_str_name().to_string())
@@ -1348,6 +1440,13 @@ fn map_polyline_node(
 
 fn map_vector2_nm(value: common_types::Vector2) -> Vector2Nm {
     Vector2Nm {
+        x_nm: value.x_nm,
+        y_nm: value.y_nm,
+    }
+}
+
+fn vector2_nm_to_proto(value: Vector2Nm) -> common_types::Vector2 {
+    common_types::Vector2 {
         x_nm: value.x_nm,
         y_nm: value.y_nm,
     }
@@ -2307,10 +2406,14 @@ mod tests {
         map_item_bounding_boxes, map_polygon_with_holes, model_document_to_proto,
         normalize_socket_uri, pad_netlist_from_footprint_items, select_single_board_document,
         select_single_project_path, selection_item_detail, summarize_item_details,
-        summarize_selection, PCB_OBJECT_TYPES,
+        summarize_selection, text_horizontal_alignment_to_proto, text_spec_to_proto,
+        PCB_OBJECT_TYPES,
     };
     use crate::error::KiCadError;
-    use crate::model::common::{DocumentSpecifier, DocumentType, ProjectInfo};
+    use crate::model::common::{
+        DocumentSpecifier, DocumentType, ProjectInfo, TextAttributesSpec, TextHorizontalAlignment,
+        TextSpec,
+    };
     use prost::Message;
     use std::path::PathBuf;
 
@@ -2649,6 +2752,48 @@ mod tests {
                 crate::proto::kiapi::common::commands::HitTestResult::HtrNoHit as i32
             ),
             crate::model::common::ItemHitTestResult::NoHit
+        );
+    }
+
+    #[test]
+    fn text_horizontal_alignment_to_proto_covers_known_variants() {
+        assert_eq!(
+            text_horizontal_alignment_to_proto(TextHorizontalAlignment::Left),
+            crate::proto::kiapi::common::types::HorizontalAlignment::HaLeft as i32
+        );
+        assert_eq!(
+            text_horizontal_alignment_to_proto(TextHorizontalAlignment::Indeterminate),
+            crate::proto::kiapi::common::types::HorizontalAlignment::HaIndeterminate as i32
+        );
+    }
+
+    #[test]
+    fn text_spec_to_proto_maps_optional_fields() {
+        let spec = TextSpec {
+            text: "R1".to_string(),
+            position_nm: Some(crate::model::board::Vector2Nm {
+                x_nm: 1_000,
+                y_nm: 2_000,
+            }),
+            attributes: Some(TextAttributesSpec {
+                font_name: Some("KiCad Font".to_string()),
+                horizontal_alignment: TextHorizontalAlignment::Center,
+                ..TextAttributesSpec::default()
+            }),
+            hyperlink: Some("https://example.com".to_string()),
+        };
+
+        let proto = text_spec_to_proto(spec);
+        assert_eq!(proto.text, "R1");
+        assert_eq!(proto.hyperlink, "https://example.com");
+        let position = proto.position.expect("position should be present");
+        assert_eq!(position.x_nm, 1_000);
+        assert_eq!(position.y_nm, 2_000);
+        let attributes = proto.attributes.expect("attributes should be present");
+        assert_eq!(attributes.font_name, "KiCad Font");
+        assert_eq!(
+            attributes.horizontal_alignment,
+            crate::proto::kiapi::common::types::HorizontalAlignment::HaCenter as i32
         );
     }
 
