@@ -11,6 +11,8 @@ keywords = ["kicad", "eda", "pcb", "ipc"]
 categories = ["api-bindings", "asynchronous"]
 include = [
     "/src/**",
+    "/test-scripts/kicad-ipc-cli.rs",
+    "/docs/TEST_CLI.md",
     "/README.md",
     "/LICENSE",
     "/Cargo.toml",
@@ -21,6 +23,11 @@ default = ["async"]
 async = ["dep:nng", "dep:prost", "dep:prost-types", "dep:tokio"]
 blocking = ["async"]
 tracing = ["dep:tracing"]
+
+[[bin]]
+name = "kicad-ipc-cli"
+path = "test-scripts/kicad-ipc-cli.rs"
+required-features = ["blocking"]
 
 [dependencies]
 nng = { version = "1.0.1", optional = true }

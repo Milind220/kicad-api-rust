@@ -8,12 +8,65 @@ Maintainer workflow: see `CONTRIBUTIONS.md`.
 
 ## Status
 
-Alpha. `v0.1.0` release candidate.
+Alpha. `v0.1.1` released.
 
-- Async API: implemented and usable.
-- Sync/blocking wrapper API: planned, not shipped yet.
+- Async API (default): implemented and usable.
+- Sync/blocking wrapper API (`feature = "blocking"`): implemented with full async parity.
 - Real-world user testing: still limited.
 - Issues and PRs welcome.
+
+## Usage
+
+### Async API (Default)
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+kicad-ipc-rs = "0.1.1"
+tokio = { version = "1", features = ["macros", "rt"] }
+```
+
+```rust
+use kicad_ipc_rs::KiCadClient;
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), kicad_ipc_rs::KiCadError> {
+    let client = KiCadClient::connect().await?;
+    client.ping().await?;
+    let version = client.get_version().await?;
+    println!("KiCad: {}", version.full_version);
+    Ok(())
+}
+```
+
+### Sync API (Blocking)
+
+Enable the `blocking` feature and use `KiCadClientBlocking` for synchronous callers:
+
+`Cargo.toml`:
+
+```toml
+[dependencies]
+kicad-ipc-rs = { version = "0.1.1", features = ["blocking"] }
+```
+
+```rust
+use kicad_ipc_rs::KiCadClientBlocking;
+
+fn main() -> Result<(), kicad_ipc_rs::KiCadError> {
+    let client = KiCadClientBlocking::builder().connect()?;
+    client.ping()?;
+    let version = client.get_version()?;
+    println!("KiCad: {}", version.full_version);
+    Ok(())
+}
+```
+
+Implementation notes:
+- Blocking calls run through a dedicated Tokio runtime thread.
+- Requests are serialized through a bounded queue.
+- Runtime teardown is graceful: in-flight work drains before worker exit.
 
 ## Protobuf Source
 
@@ -34,7 +87,8 @@ The regeneration tool also stamps `KICAD_API_VERSION` from the KiCad submodule g
 
 ## Local Testing
 
-- CLI runbook: `/Users/milindsharma/Developer/kicad-oss/kicad-ipc-rust/docs/TEST_CLI.md`
+- CLI runbook: `/Users/milindsharma/Developer/kicad-oss/kicad-ipc-rs/docs/TEST_CLI.md`
+- CLI help: `cargo run --features blocking --bin kicad-ipc-cli -- help`
 
 ## Runtime Compatibility Notes
 
@@ -169,7 +223,6 @@ Legend:
 ## Roadmap
 
 `v0.2.0` target:
-- Add full sync/blocking wrapper API parity over async client.
 - Expand runtime + integration testing coverage.
 - Set up CI to run checks/tests on commits and PRs.
 - Continue API hardening/docs/examples for stable `1.0` path.

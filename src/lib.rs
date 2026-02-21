@@ -19,6 +19,8 @@ pub mod blocking;
 
 pub(crate) mod proto;
 
+#[cfg(feature = "blocking")]
+pub use crate::blocking::{KiCadClientBlocking, KiCadClientBlockingBuilder};
 pub use crate::client::{ClientBuilder, KiCadClient};
 pub use crate::error::KiCadError;
 pub use crate::kicad_api_version::KICAD_API_VERSION;

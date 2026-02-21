@@ -5,9 +5,9 @@ use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
 
-use kicad_ipc::{
-    BoardFlipMode, BoardOriginKind, ClientBuilder, CommitAction, CommitSession, DocumentType,
-    DrcSeverity, EditorFrameType, InactiveLayerDisplayMode, KiCadClient, KiCadError, MapMergeMode,
+use kicad_ipc_rs::{
+    BoardFlipMode, BoardOriginKind, CommitAction, CommitSession, DocumentType, DrcSeverity,
+    EditorFrameType, InactiveLayerDisplayMode, KiCadClientBlocking, KiCadError, MapMergeMode,
     NetColorDisplayMode, PadstackPresenceState, PcbObjectTypeCode, RatsnestDisplayMode,
     TextObjectSpec, TextShapeGeometry, TextSpec, Vector2Nm,
 };
@@ -190,9 +190,8 @@ enum Command {
     Help,
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    match run().await {
+fn main() -> ExitCode {
+    match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error: {err}");
@@ -216,7 +215,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run() -> Result<(), KiCadError> {
+fn run() -> Result<(), KiCadError> {
     let (config, command) = parse_args()?;
 
     if matches!(command, Command::Help) {
@@ -224,7 +223,8 @@ async fn run() -> Result<(), KiCadError> {
         return Ok(());
     }
 
-    let mut builder = ClientBuilder::new().timeout(Duration::from_millis(config.timeout_ms));
+    let mut builder =
+        KiCadClientBlocking::builder().timeout(Duration::from_millis(config.timeout_ms));
     if let Some(socket) = config.socket {
         builder = builder.socket_path(socket);
     }
@@ -235,30 +235,30 @@ async fn run() -> Result<(), KiCadError> {
         builder = builder.client_name(client_name);
     }
 
-    let client = builder.connect().await?;
+    let client = builder.connect()?;
 
     match command {
         Command::Ping => {
-            client.ping().await?;
+            client.ping()?;
             println!("pong");
         }
         Command::Version => {
-            let version = client.get_version().await?;
+            let version = client.get_version()?;
             println!(
                 "version: {}.{}.{} ({})",
                 version.major, version.minor, version.patch, version.full_version
             );
         }
         Command::KiCadBinaryPath { binary_name } => {
-            let path = client.get_kicad_binary_path(binary_name).await?;
+            let path = client.get_kicad_binary_path(binary_name)?;
             println!("kicad_binary_path={path}");
         }
         Command::PluginSettingsPath { identifier } => {
-            let path = client.get_plugin_settings_path(identifier).await?;
+            let path = client.get_plugin_settings_path(identifier)?;
             println!("plugin_settings_path={path}");
         }
         Command::OpenDocs { document_type } => {
-            let docs = client.get_open_documents(document_type).await?;
+            let docs = client.get_open_documents(document_type)?;
             if docs.is_empty() {
                 println!("no open `{document_type}` documents");
             } else {
@@ -280,11 +280,11 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::ProjectPath => {
-            let path = client.get_current_project_path().await?;
+            let path = client.get_current_project_path()?;
             println!("project_path={}", path.display());
         }
         Command::BoardOpen => {
-            let has_board = client.has_open_board().await?;
+            let has_board = client.has_open_board()?;
             if has_board {
                 println!("board-open: yes");
             } else {
@@ -292,7 +292,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::NetClasses => {
-            let classes = client.get_net_classes().await?;
+            let classes = client.get_net_classes()?;
             println!("net_class_count={}", classes.len());
             for class in classes {
                 println!(
@@ -308,8 +308,8 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::SetNetClasses { merge_mode } => {
-            let classes = client.get_net_classes().await?;
-            let updated = client.set_net_classes(classes, merge_mode).await?;
+            let classes = client.get_net_classes()?;
+            let updated = client.set_net_classes(classes, merge_mode)?;
             println!(
                 "net_class_count={} merge_mode={}",
                 updated.len(),
@@ -317,7 +317,7 @@ async fn run() -> Result<(), KiCadError> {
             );
         }
         Command::TextVariables => {
-            let variables = client.get_text_variables().await?;
+            let variables = client.get_text_variables()?;
             println!("text_variable_count={}", variables.len());
             for (name, value) in variables {
                 println!("name={} value={}", name, value);
@@ -327,7 +327,7 @@ async fn run() -> Result<(), KiCadError> {
             merge_mode,
             variables,
         } => {
-            let updated = client.set_text_variables(variables, merge_mode).await?;
+            let updated = client.set_text_variables(variables, merge_mode)?;
             println!(
                 "text_variable_count={} merge_mode={}",
                 updated.len(),
@@ -338,27 +338,25 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::ExpandTextVariables { text } => {
-            let expanded = client.expand_text_variables(text.clone()).await?;
+            let expanded = client.expand_text_variables(text.clone())?;
             println!("expanded_count={}", expanded.len());
             for (index, value) in expanded.iter().enumerate() {
                 println!("[{index}] input={} expanded={}", text[index], value);
             }
         }
         Command::TextExtents { text } => {
-            let extents = client.get_text_extents(TextSpec::plain(text)).await?;
+            let extents = client.get_text_extents(TextSpec::plain(text))?;
             println!(
                 "x_nm={} y_nm={} width_nm={} height_nm={}",
                 extents.x_nm, extents.y_nm, extents.width_nm, extents.height_nm
             );
         }
         Command::TextAsShapes { text } => {
-            let entries = client
-                .get_text_as_shapes(
-                    text.into_iter()
-                        .map(|value| TextObjectSpec::Text(TextSpec::plain(value)))
-                        .collect(),
-                )
-                .await?;
+            let entries = client.get_text_as_shapes(
+                text.into_iter()
+                    .map(|value| TextObjectSpec::Text(TextSpec::plain(value)))
+                    .collect(),
+            )?;
             println!("text_with_shapes_count={}", entries.len());
             for (index, entry) in entries.iter().enumerate() {
                 let mut segment_count = 0;
@@ -393,7 +391,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::Nets => {
-            let nets = client.get_nets().await?;
+            let nets = client.get_nets()?;
             if nets.is_empty() {
                 println!("no nets returned");
             } else {
@@ -403,7 +401,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::EnabledLayers => {
-            let enabled = client.get_board_enabled_layers().await?;
+            let enabled = client.get_board_enabled_layers()?;
             println!("copper_layer_count={}", enabled.copper_layer_count);
             for layer in enabled.layers {
                 println!("layer_id={} layer_name={}", layer.id, layer.name);
@@ -413,27 +411,25 @@ async fn run() -> Result<(), KiCadError> {
             copper_layer_count,
             layer_ids,
         } => {
-            let enabled = client
-                .set_board_enabled_layers(copper_layer_count, layer_ids)
-                .await?;
+            let enabled = client.set_board_enabled_layers(copper_layer_count, layer_ids)?;
             println!("copper_layer_count={}", enabled.copper_layer_count);
             for layer in enabled.layers {
                 println!("layer_id={} layer_name={}", layer.id, layer.name);
             }
         }
         Command::ActiveLayer => {
-            let layer = client.get_active_layer().await?;
+            let layer = client.get_active_layer()?;
             println!(
                 "active_layer_id={} active_layer_name={}",
                 layer.id, layer.name
             );
         }
         Command::SetActiveLayer { layer_id } => {
-            client.set_active_layer(layer_id).await?;
+            client.set_active_layer(layer_id)?;
             println!("set_active_layer_id={}", layer_id);
         }
         Command::VisibleLayers => {
-            let layers = client.get_visible_layers().await?;
+            let layers = client.get_visible_layers()?;
             if layers.is_empty() {
                 println!("no visible layers returned");
             } else {
@@ -443,20 +439,18 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::SetVisibleLayers { layer_ids } => {
-            client.set_visible_layers(layer_ids.clone()).await?;
+            client.set_visible_layers(layer_ids.clone())?;
             println!("set_visible_layer_count={}", layer_ids.len());
         }
         Command::BoardOrigin { kind } => {
-            let origin = client.get_board_origin(kind).await?;
+            let origin = client.get_board_origin(kind)?;
             println!(
                 "origin_kind={} x_nm={} y_nm={}",
                 kind, origin.x_nm, origin.y_nm
             );
         }
         Command::SetBoardOrigin { kind, x_nm, y_nm } => {
-            client
-                .set_board_origin(kind, Vector2Nm { x_nm, y_nm })
-                .await?;
+            client.set_board_origin(kind, Vector2Nm { x_nm, y_nm })?;
             println!("set_origin_kind={} x_nm={} y_nm={}", kind, x_nm, y_nm);
         }
         Command::InjectDrcError {
@@ -470,20 +464,18 @@ async fn run() -> Result<(), KiCadError> {
                 (Some(x_nm), Some(y_nm)) => Some(Vector2Nm { x_nm, y_nm }),
                 _ => None,
             };
-            let marker = client
-                .inject_drc_error(severity, message, position, item_ids)
-                .await?;
+            let marker = client.inject_drc_error(severity, message, position, item_ids)?;
             println!(
                 "drc_marker_id={}",
                 marker.unwrap_or_else(|| "-".to_string())
             );
         }
         Command::RefreshEditor { frame } => {
-            client.refresh_editor(frame).await?;
+            client.refresh_editor(frame)?;
             println!("refresh_editor=ok frame={}", frame);
         }
         Command::BeginCommit => {
-            let session = client.begin_commit().await?;
+            let session = client.begin_commit()?;
             println!("commit_id={}", session.id);
         }
         Command::EndCommit {
@@ -491,13 +483,11 @@ async fn run() -> Result<(), KiCadError> {
             action,
             message,
         } => {
-            client
-                .end_commit(CommitSession { id }, action, message)
-                .await?;
+            client.end_commit(CommitSession { id }, action, message)?;
             println!("end_commit=ok action={}", action);
         }
         Command::SaveDoc => {
-            client.save_document().await?;
+            client.save_document()?;
             println!("save_document=ok");
         }
         Command::SaveCopy {
@@ -505,27 +495,25 @@ async fn run() -> Result<(), KiCadError> {
             overwrite,
             include_project,
         } => {
-            client
-                .save_copy_of_document(path, overwrite, include_project)
-                .await?;
+            client.save_copy_of_document(path, overwrite, include_project)?;
             println!(
                 "save_copy_of_document=ok overwrite={} include_project={}",
                 overwrite, include_project
             );
         }
         Command::RevertDoc => {
-            client.revert_document().await?;
+            client.revert_document()?;
             println!("revert_document=ok");
         }
         Command::RunAction { action } => {
-            let status = client.run_action(action).await?;
+            let status = client.run_action(action)?;
             println!("run_action_status={status:?}");
         }
         Command::CreateItems {
             items,
             container_id,
         } => {
-            let created = client.create_items(items, container_id).await?;
+            let created = client.create_items(items, container_id)?;
             println!("created_item_count={}", created.len());
             for (index, item) in created.iter().enumerate() {
                 println!(
@@ -536,7 +524,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::UpdateItems { items } => {
-            let updated = client.update_items(items).await?;
+            let updated = client.update_items(items)?;
             println!("updated_item_count={}", updated.len());
             for (index, item) in updated.iter().enumerate() {
                 println!(
@@ -547,14 +535,14 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::DeleteItems { item_ids } => {
-            let deleted = client.delete_items(item_ids).await?;
+            let deleted = client.delete_items(item_ids)?;
             println!("deleted_item_count={}", deleted.len());
             for (index, item_id) in deleted.iter().enumerate() {
                 println!("[{index}] id={item_id}");
             }
         }
         Command::ParseCreateItemsFromString { contents } => {
-            let created = client.parse_and_create_items_from_string(contents).await?;
+            let created = client.parse_and_create_items_from_string(contents)?;
             println!("created_item_count={}", created.len());
             for (index, item) in created.iter().enumerate() {
                 println!(
@@ -565,32 +553,32 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::AddToSelection { item_ids } => {
-            let summary = client.add_to_selection(item_ids).await?;
+            let summary = client.add_to_selection(item_ids)?;
             println!("selection_total={}", summary.total_items);
             for entry in summary.type_url_counts {
                 println!("type_url={} count={}", entry.type_url, entry.count);
             }
         }
         Command::RemoveFromSelection { item_ids } => {
-            let summary = client.remove_from_selection(item_ids).await?;
+            let summary = client.remove_from_selection(item_ids)?;
             println!("selection_total={}", summary.total_items);
             for entry in summary.type_url_counts {
                 println!("type_url={} count={}", entry.type_url, entry.count);
             }
         }
         Command::ClearSelection => {
-            let summary = client.clear_selection().await?;
+            let summary = client.clear_selection()?;
             println!("selection_total={}", summary.total_items);
         }
         Command::SelectionSummary => {
-            let summary = client.get_selection_summary().await?;
+            let summary = client.get_selection_summary()?;
             println!("selection_total={}", summary.total_items);
             for entry in summary.type_url_counts {
                 println!("type_url={} count={}", entry.type_url, entry.count);
             }
         }
         Command::SelectionDetails => {
-            let details = client.get_selection_details().await?;
+            let details = client.get_selection_details()?;
             println!("selection_total={}", details.len());
             for (index, item) in details.iter().enumerate() {
                 println!(
@@ -600,7 +588,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::SelectionRaw => {
-            let items = client.get_selection_raw().await?;
+            let items = client.get_selection_raw()?;
             println!("selection_total={}", items.len());
             for (index, item) in items.iter().enumerate() {
                 println!(
@@ -612,7 +600,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::NetlistPads => {
-            let entries = client.get_pad_netlist().await?;
+            let entries = client.get_pad_netlist()?;
             println!("pad_net_entries={}", entries.len());
             for entry in entries {
                 println!(
@@ -630,7 +618,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::ItemsById { item_ids } => {
-            let details = client.get_items_by_id_details(item_ids).await?;
+            let details = client.get_items_by_id_details(item_ids)?;
             println!("items_total={}", details.len());
             for (index, item) in details.iter().enumerate() {
                 println!(
@@ -643,9 +631,7 @@ async fn run() -> Result<(), KiCadError> {
             item_ids,
             include_child_text,
         } => {
-            let boxes = client
-                .get_item_bounding_boxes(item_ids, include_child_text)
-                .await?;
+            let boxes = client.get_item_bounding_boxes(item_ids, include_child_text)?;
             println!("bbox_total={}", boxes.len());
             for entry in boxes {
                 println!(
@@ -660,13 +646,11 @@ async fn run() -> Result<(), KiCadError> {
             y_nm,
             tolerance_nm,
         } => {
-            let result = client
-                .hit_test_item(item_id, Vector2Nm { x_nm, y_nm }, tolerance_nm)
-                .await?;
+            let result = client.hit_test_item(item_id, Vector2Nm { x_nm, y_nm }, tolerance_nm)?;
             println!("hit_test={result}");
         }
         Command::PcbTypes => {
-            for entry in kicad_ipc::KiCadClient::pcb_object_type_codes() {
+            for entry in kicad_ipc_rs::KiCadClient::pcb_object_type_codes() {
                 println!("type_id={} type_name={}", entry.code, entry.name);
             }
         }
@@ -674,9 +658,7 @@ async fn run() -> Result<(), KiCadError> {
             type_codes,
             include_debug,
         } => {
-            let items = client
-                .get_items_raw_by_type_codes(type_codes.clone())
-                .await?;
+            let items = client.get_items_raw_by_type_codes(type_codes.clone())?;
             println!(
                 "items_total={} requested_type_codes={:?}",
                 items.len(),
@@ -684,7 +666,7 @@ async fn run() -> Result<(), KiCadError> {
             );
             for (index, item) in items.iter().enumerate() {
                 if include_debug {
-                    let debug = kicad_ipc::KiCadClient::debug_any_item(item)?
+                    let debug = kicad_ipc_rs::KiCadClient::debug_any_item(item)?
                         .replace('\n', "\\n")
                         .replace('\t', " ");
                     println!(
@@ -705,11 +687,8 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::ItemsRawAllPcb { include_debug } => {
-            for object_type in kicad_ipc::KiCadClient::pcb_object_type_codes() {
-                match client
-                    .get_items_raw_by_type_codes(vec![object_type.code])
-                    .await
-                {
+            for object_type in kicad_ipc_rs::KiCadClient::pcb_object_type_codes() {
+                match client.get_items_raw_by_type_codes(vec![object_type.code]) {
                     Ok(items) => {
                         println!(
                             "type_id={} type_name={} item_count={}",
@@ -719,7 +698,7 @@ async fn run() -> Result<(), KiCadError> {
                         );
                         for (index, item) in items.iter().enumerate() {
                             if include_debug {
-                                let debug = kicad_ipc::KiCadClient::debug_any_item(item)?
+                                let debug = kicad_ipc_rs::KiCadClient::debug_any_item(item)?
                                     .replace('\n', "\\n")
                                     .replace('\t', " ");
                                 println!(
@@ -753,9 +732,7 @@ async fn run() -> Result<(), KiCadError> {
             layer_id,
             include_debug,
         } => {
-            let rows = client
-                .get_pad_shape_as_polygon(pad_ids.clone(), layer_id)
-                .await?;
+            let rows = client.get_pad_shape_as_polygon(pad_ids.clone(), layer_id)?;
             println!(
                 "pad_shape_total={} layer_id={} requested_pad_count={}",
                 rows.len(),
@@ -779,11 +756,9 @@ async fn run() -> Result<(), KiCadError> {
                 );
             }
             if include_debug {
-                let raw_chunks = client
-                    .get_pad_shape_as_polygon_raw(pad_ids, layer_id)
-                    .await?;
+                let raw_chunks = client.get_pad_shape_as_polygon_raw(pad_ids, layer_id)?;
                 for (chunk_index, chunk) in raw_chunks.iter().enumerate() {
-                    let debug = kicad_ipc::KiCadClient::debug_any_item(chunk)?
+                    let debug = kicad_ipc_rs::KiCadClient::debug_any_item(chunk)?
                         .replace('\n', "\\n")
                         .replace('\t', " ");
                     println!("raw_chunk={chunk_index} debug={debug}");
@@ -795,9 +770,8 @@ async fn run() -> Result<(), KiCadError> {
             layer_ids,
             include_debug,
         } => {
-            let rows = client
-                .check_padstack_presence_on_layers(item_ids.clone(), layer_ids.clone())
-                .await?;
+            let rows =
+                client.check_padstack_presence_on_layers(item_ids.clone(), layer_ids.clone())?;
             println!(
                 "padstack_presence_total={} requested_item_count={} requested_layer_count={}",
                 rows.len(),
@@ -811,11 +785,10 @@ async fn run() -> Result<(), KiCadError> {
                 );
             }
             if include_debug {
-                let raw_chunks = client
-                    .check_padstack_presence_on_layers_raw(item_ids, layer_ids)
-                    .await?;
+                let raw_chunks =
+                    client.check_padstack_presence_on_layers_raw(item_ids, layer_ids)?;
                 for (chunk_index, chunk) in raw_chunks.iter().enumerate() {
-                    let debug = kicad_ipc::KiCadClient::debug_any_item(chunk)?
+                    let debug = kicad_ipc_rs::KiCadClient::debug_any_item(chunk)?
                         .replace('\n', "\\n")
                         .replace('\t', " ");
                     println!("raw_chunk={chunk_index} debug={debug}");
@@ -823,7 +796,7 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::TitleBlock => {
-            let title_block = client.get_title_block_info().await?;
+            let title_block = client.get_title_block_info()?;
             println!("title={}", title_block.title);
             println!("date={}", title_block.date);
             println!("revision={}", title_block.revision);
@@ -833,28 +806,28 @@ async fn run() -> Result<(), KiCadError> {
             }
         }
         Command::BoardAsString => {
-            let content = client.get_board_as_string().await?;
+            let content = client.get_board_as_string()?;
             println!("{content}");
         }
         Command::SelectionAsString => {
-            let content = client.get_selection_as_string().await?;
+            let content = client.get_selection_as_string()?;
             println!("{content}");
         }
         Command::Stackup => {
-            let stackup = client.get_board_stackup().await?;
+            let stackup = client.get_board_stackup()?;
             println!("{stackup:#?}");
         }
         Command::UpdateStackup => {
-            let stackup = client.get_board_stackup().await?;
-            let updated = client.update_board_stackup(stackup).await?;
+            let stackup = client.get_board_stackup()?;
+            let updated = client.update_board_stackup(stackup)?;
             println!("{updated:#?}");
         }
         Command::GraphicsDefaults => {
-            let defaults = client.get_graphics_defaults().await?;
+            let defaults = client.get_graphics_defaults()?;
             println!("{defaults:#?}");
         }
         Command::Appearance => {
-            let appearance = client.get_board_editor_appearance_settings().await?;
+            let appearance = client.get_board_editor_appearance_settings()?;
             println!("{appearance:#?}");
         }
         Command::SetAppearance {
@@ -863,31 +836,31 @@ async fn run() -> Result<(), KiCadError> {
             board_flip,
             ratsnest_display,
         } => {
-            let updated = client
-                .set_board_editor_appearance_settings(kicad_ipc::BoardEditorAppearanceSettings {
+            let updated = client.set_board_editor_appearance_settings(
+                kicad_ipc_rs::BoardEditorAppearanceSettings {
                     inactive_layer_display,
                     net_color_display,
                     board_flip,
                     ratsnest_display,
-                })
-                .await?;
+                },
+            )?;
             println!("{updated:#?}");
         }
         Command::RefillZones { zone_ids } => {
-            client.refill_zones(zone_ids).await?;
+            client.refill_zones(zone_ids)?;
             println!("refill_zones_dispatched=ok");
         }
         Command::InteractiveMoveItems { item_ids } => {
-            client.interactive_move_items(item_ids.clone()).await?;
+            client.interactive_move_items(item_ids.clone())?;
             println!("interactive_move_item_count={}", item_ids.len());
         }
         Command::NetClass => {
-            let nets = client.get_nets().await?;
-            let netclasses = client.get_netclass_for_nets(nets).await?;
+            let nets = client.get_nets()?;
+            let netclasses = client.get_netclass_for_nets(nets)?;
             println!("{netclasses:#?}");
         }
         Command::BoardReadReport { output } => {
-            let report = build_board_read_report_markdown(&client).await?;
+            let report = build_board_read_report_markdown(&client)?;
             fs::write(&output, report).map_err(|err| KiCadError::Config {
                 reason: format!("failed to write report to `{}`: {err}", output.display()),
             })?;
@@ -897,9 +870,9 @@ async fn run() -> Result<(), KiCadError> {
             print_proto_coverage_board_read();
         }
         Command::Smoke => {
-            client.ping().await?;
-            let version = client.get_version().await?;
-            let has_board = client.has_open_board().await?;
+            client.ping()?;
+            let version = client.get_version()?;
+            let has_board = client.has_open_board()?;
             println!(
                 "smoke ok: version={}.{}.{} board_open={}",
                 version.major, version.minor, version.patch, has_board
@@ -2189,13 +2162,13 @@ TYPES:
     );
 }
 
-async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String, KiCadError> {
+fn build_board_read_report_markdown(client: &KiCadClientBlocking) -> Result<String, KiCadError> {
     let mut out = String::new();
     out.push_str("# Board Read Reconstruction Report\n\n");
     out.push_str("Generated by `kicad-ipc-cli board-read-report`.\n\n");
     out.push_str("Goal: verify that non-mutating PCB API reads are sufficient to reconstruct board state.\n\n");
 
-    let version = client.get_version().await?;
+    let version = client.get_version()?;
     out.push_str("## Session\n\n");
     out.push_str(&format!(
         "- KiCad version: {}.{}.{} ({})\n",
@@ -2208,7 +2181,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
     ));
 
     out.push_str("## Open Documents\n\n");
-    let docs = client.get_open_documents(DocumentType::Pcb).await?;
+    let docs = client.get_open_documents(DocumentType::Pcb)?;
     if docs.is_empty() {
         out.push_str("- No open PCB docs\n\n");
     } else {
@@ -2230,7 +2203,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
     }
 
     out.push_str("## Layer / Origin / Nets\n\n");
-    let enabled = client.get_board_enabled_layers().await?;
+    let enabled = client.get_board_enabled_layers()?;
     let enabled_layers = enabled.layers.clone();
     out.push_str(&format!(
         "- copper_layer_count: {}\n",
@@ -2241,34 +2214,30 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
         out.push_str(&format!("  - {} ({})\n", layer.name, layer.id));
     }
 
-    let visible_layers = client.get_visible_layers().await?;
+    let visible_layers = client.get_visible_layers()?;
     out.push_str("- visible_layers:\n");
     for layer in visible_layers {
         out.push_str(&format!("  - {} ({})\n", layer.name, layer.id));
     }
 
-    let active_layer = client.get_active_layer().await?;
+    let active_layer = client.get_active_layer()?;
     out.push_str(&format!(
         "- active_layer: {} ({})\n",
         active_layer.name, active_layer.id
     ));
 
-    let grid_origin = client
-        .get_board_origin(kicad_ipc::BoardOriginKind::Grid)
-        .await?;
+    let grid_origin = client.get_board_origin(kicad_ipc_rs::BoardOriginKind::Grid)?;
     out.push_str(&format!(
         "- grid_origin_nm: {},{}\n",
         grid_origin.x_nm, grid_origin.y_nm
     ));
-    let drill_origin = client
-        .get_board_origin(kicad_ipc::BoardOriginKind::Drill)
-        .await?;
+    let drill_origin = client.get_board_origin(kicad_ipc_rs::BoardOriginKind::Drill)?;
     out.push_str(&format!(
         "- drill_origin_nm: {},{}\n",
         drill_origin.x_nm, drill_origin.y_nm
     ));
 
-    let nets = client.get_nets().await?;
+    let nets = client.get_nets()?;
     out.push_str(&format!("- net_count: {}\n", nets.len()));
     out.push_str("\n### Netlist\n\n");
     for net in &nets {
@@ -2277,7 +2246,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
     out.push('\n');
 
     out.push_str("### Pad-Level Netlist (Footprint/Pad/Net)\n\n");
-    let pad_entries = client.get_pad_netlist().await?;
+    let pad_entries = client.get_pad_netlist()?;
     let mut pad_ids = BTreeSet::new();
     out.push_str(&format!("- pad_entry_count: {}\n", pad_entries.len()));
     for (index, entry) in pad_entries.iter().enumerate() {
@@ -2319,9 +2288,8 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
     ));
 
     let mut present_pad_ids_by_layer: BTreeMap<i32, BTreeSet<String>> = BTreeMap::new();
-    let presence_rows = client
-        .check_padstack_presence_on_layers(pad_ids.clone(), enabled_layer_ids)
-        .await?;
+    let presence_rows =
+        client.check_padstack_presence_on_layers(pad_ids.clone(), enabled_layer_ids)?;
     out.push_str(&format!(
         "- presence_entry_count: {}\n",
         presence_rows.len()
@@ -2372,9 +2340,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
             continue;
         }
 
-        let polygons = client
-            .get_pad_shape_as_polygon(pad_ids_on_layer, layer.id)
-            .await?;
+        let polygons = client.get_pad_shape_as_polygon(pad_ids_on_layer, layer.id)?;
         out.push_str(&format!("- polygon_entry_count: {}\n\n", polygons.len()));
         for row in polygons {
             let summary = polygon_geometry_summary(&row.polygon);
@@ -2395,7 +2361,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
 
     out.push_str("## Board/Editor Structures\n\n");
     out.push_str("### Title Block\n\n");
-    let title_block = client.get_title_block_info().await?;
+    let title_block = client.get_title_block_info()?;
     out.push_str(&format!("- title: {}\n", title_block.title));
     out.push_str(&format!("- date: {}\n", title_block.date));
     out.push_str(&format!("- revision: {}\n", title_block.revision));
@@ -2406,40 +2372,35 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
     out.push('\n');
 
     out.push_str("### Stackup\n\n```text\n");
-    out.push_str(&format!("{:#?}", client.get_board_stackup().await?));
+    out.push_str(&format!("{:#?}", client.get_board_stackup()?));
     out.push_str("\n```\n\n");
 
     out.push_str("### Graphics Defaults\n\n```text\n");
-    out.push_str(&format!("{:#?}", client.get_graphics_defaults().await?));
+    out.push_str(&format!("{:#?}", client.get_graphics_defaults()?));
     out.push_str("\n```\n\n");
 
     out.push_str("### Editor Appearance\n\n```text\n");
     out.push_str(&format!(
         "{:#?}",
-        client.get_board_editor_appearance_settings().await?
+        client.get_board_editor_appearance_settings()?
     ));
     out.push_str("\n```\n\n");
 
     out.push_str("### NetClass Map\n\n```text\n");
     out.push_str(&format!(
         "{:#?}",
-        client
-            .get_netclass_for_nets(client.get_nets().await?)
-            .await?
+        client.get_netclass_for_nets(client.get_nets()?)?
     ));
     out.push_str("\n```\n\n");
 
     out.push_str("## PCB Item Coverage (All KOT_PCB_* Types)\n\n");
     let mut missing_types: Vec<PcbObjectTypeCode> = Vec::new();
-    for object_type in kicad_ipc::KiCadClient::pcb_object_type_codes() {
+    for object_type in kicad_ipc_rs::KiCadClient::pcb_object_type_codes() {
         out.push_str(&format!(
             "### {} ({})\n\n",
             object_type.name, object_type.code
         ));
-        match client
-            .get_items_raw_by_type_codes(vec![object_type.code])
-            .await
-        {
+        match client.get_items_raw_by_type_codes(vec![object_type.code]) {
             Ok(items) => {
                 if items.is_empty() {
                     missing_types.push(*object_type);
@@ -2451,7 +2412,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
                     .take(REPORT_MAX_ITEM_DEBUG_ROWS_PER_TYPE)
                     .enumerate()
                 {
-                    let mut debug = kicad_ipc::KiCadClient::debug_any_item(item)?;
+                    let mut debug = kicad_ipc_rs::KiCadClient::debug_any_item(item)?;
                     if debug.len() > REPORT_MAX_ITEM_DEBUG_CHARS {
                         debug.truncate(REPORT_MAX_ITEM_DEBUG_CHARS);
                         debug.push_str("\n...<truncated; use items-raw CLI for full payload>");
@@ -2495,7 +2456,7 @@ async fn build_board_read_report_markdown(client: &KiCadClient) -> Result<String
     }
 
     out.push_str("## Board File Snapshot (Raw)\n\n```scheme\n");
-    let mut board_text = client.get_board_as_string().await?;
+    let mut board_text = client.get_board_as_string()?;
     if board_text.len() > REPORT_MAX_BOARD_SNAPSHOT_CHARS {
         board_text.truncate(REPORT_MAX_BOARD_SNAPSHOT_CHARS);
         board_text.push_str(
@@ -2665,7 +2626,7 @@ struct PolygonGeometrySummary {
     arc_nodes: usize,
 }
 
-fn polygon_geometry_summary(polygon: &kicad_ipc::PolygonWithHolesNm) -> PolygonGeometrySummary {
+fn polygon_geometry_summary(polygon: &kicad_ipc_rs::PolygonWithHolesNm) -> PolygonGeometrySummary {
     let mut summary = PolygonGeometrySummary {
         hole_count: polygon.holes.len(),
         ..PolygonGeometrySummary::default()
@@ -2675,8 +2636,8 @@ fn polygon_geometry_summary(polygon: &kicad_ipc::PolygonWithHolesNm) -> PolygonG
         summary.outline_nodes = outline.nodes.len();
         for node in &outline.nodes {
             match node {
-                kicad_ipc::PolyLineNodeGeometryNm::Point(_) => summary.point_nodes += 1,
-                kicad_ipc::PolyLineNodeGeometryNm::Arc(_) => summary.arc_nodes += 1,
+                kicad_ipc_rs::PolyLineNodeGeometryNm::Point(_) => summary.point_nodes += 1,
+                kicad_ipc_rs::PolyLineNodeGeometryNm::Arc(_) => summary.arc_nodes += 1,
             }
         }
     }
@@ -2685,8 +2646,8 @@ fn polygon_geometry_summary(polygon: &kicad_ipc::PolygonWithHolesNm) -> PolygonG
         summary.hole_nodes_total += hole.nodes.len();
         for node in &hole.nodes {
             match node {
-                kicad_ipc::PolyLineNodeGeometryNm::Point(_) => summary.point_nodes += 1,
-                kicad_ipc::PolyLineNodeGeometryNm::Arc(_) => summary.arc_nodes += 1,
+                kicad_ipc_rs::PolyLineNodeGeometryNm::Point(_) => summary.point_nodes += 1,
+                kicad_ipc_rs::PolyLineNodeGeometryNm::Arc(_) => summary.arc_nodes += 1,
             }
         }
     }
@@ -2765,7 +2726,7 @@ fn hex_nibble(c: char) -> Result<u8, String> {
 #[cfg(test)]
 mod tests {
     use super::{parse_args_from, Command};
-    use kicad_ipc::{
+    use kicad_ipc_rs::{
         BoardFlipMode, BoardOriginKind, CommitAction, DrcSeverity, InactiveLayerDisplayMode,
         NetColorDisplayMode, RatsnestDisplayMode,
     };
@@ -2930,7 +2891,7 @@ mod tests {
 
         match command {
             Command::SetNetClasses { merge_mode } => {
-                assert_eq!(merge_mode, kicad_ipc::MapMergeMode::Replace)
+                assert_eq!(merge_mode, kicad_ipc_rs::MapMergeMode::Replace)
             }
             other => panic!("unexpected command variant: {other:?}"),
         }
@@ -2952,7 +2913,7 @@ mod tests {
                 merge_mode,
                 variables,
             } => {
-                assert_eq!(merge_mode, kicad_ipc::MapMergeMode::Replace);
+                assert_eq!(merge_mode, kicad_ipc_rs::MapMergeMode::Replace);
                 assert_eq!(variables.get("REV").map(|value| value.as_str()), Some("A"));
             }
             other => panic!("unexpected command variant: {other:?}"),

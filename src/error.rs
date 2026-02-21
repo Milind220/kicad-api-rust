@@ -52,6 +52,9 @@ pub enum KiCadError {
     #[error("runtime task join failed: {0}")]
     RuntimeJoin(String),
 
+    #[error("blocking runtime is unavailable")]
+    BlockingRuntimeClosed,
+
     #[error("mutex poisoned")]
     InternalPoisoned,
 
