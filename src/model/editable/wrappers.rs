@@ -47,7 +47,7 @@ macro_rules! impl_proto_wrapper {
 impl_proto_wrapper!(TrackItem, board_types::Track);
 impl_proto_wrapper!(ArcItem, board_types::Arc);
 impl_proto_wrapper!(ViaItem, board_types::Via);
-impl_proto_wrapper!(FootprintItem, board_types::FootprintInstance);
+impl_proto_wrapper!(FootprintInstanceItem, board_types::FootprintInstance);
 impl_proto_wrapper!(PadItem, board_types::Pad);
 impl_proto_wrapper!(BoardGraphicShapeItem, board_types::BoardGraphicShape);
 impl_proto_wrapper!(BoardTextItem, board_types::BoardText);
@@ -159,7 +159,7 @@ impl ViaItem {
     }
 }
 
-impl FootprintItem {
+impl FootprintInstanceItem {
     /// Returns the footprint KIID value.
     pub fn id(&self) -> Option<&str> {
         kiid_value(&self.proto.id)

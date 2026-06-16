@@ -22,7 +22,7 @@ pub enum EditablePcbItem {
     /// Via item.
     Via(ViaItem),
     /// Footprint instance item.
-    Footprint(FootprintItem),
+    FootprintInstance(FootprintInstanceItem),
     /// Pad item.
     Pad(PadItem),
     /// Board graphic shape item.
@@ -70,10 +70,9 @@ impl EditablePcbItem {
             )?)));
         }
         if type_url == envelope::type_url(pcb_item_type_urls::FOOTPRINT_INSTANCE) {
-            return Ok(Self::Footprint(FootprintItem::from_proto(decode_item(
-                &raw,
-                pcb_item_type_urls::FOOTPRINT_INSTANCE,
-            )?)));
+            return Ok(Self::FootprintInstance(FootprintInstanceItem::from_proto(
+                decode_item(&raw, pcb_item_type_urls::FOOTPRINT_INSTANCE)?,
+            )));
         }
         if type_url == envelope::type_url(pcb_item_type_urls::PAD) {
             return Ok(Self::Pad(PadItem::from_proto(decode_item(
@@ -141,7 +140,7 @@ impl EditablePcbItem {
             Self::Track(item) => envelope::pack_any(&item.proto, pcb_item_type_urls::TRACK),
             Self::Arc(item) => envelope::pack_any(&item.proto, pcb_item_type_urls::ARC),
             Self::Via(item) => envelope::pack_any(&item.proto, pcb_item_type_urls::VIA),
-            Self::Footprint(item) => {
+            Self::FootprintInstance(item) => {
                 envelope::pack_any(&item.proto, pcb_item_type_urls::FOOTPRINT_INSTANCE)
             }
             Self::Pad(item) => envelope::pack_any(&item.proto, pcb_item_type_urls::PAD),
@@ -176,7 +175,7 @@ impl EditablePcbItem {
             Self::Track(_) => EditablePcbItemKind::Track,
             Self::Arc(_) => EditablePcbItemKind::Arc,
             Self::Via(_) => EditablePcbItemKind::Via,
-            Self::Footprint(_) => EditablePcbItemKind::Footprint,
+            Self::FootprintInstance(_) => EditablePcbItemKind::FootprintInstance,
             Self::Pad(_) => EditablePcbItemKind::Pad,
             Self::BoardGraphicShape(_) => EditablePcbItemKind::BoardGraphicShape,
             Self::BoardText(_) => EditablePcbItemKind::BoardText,
@@ -199,7 +198,7 @@ impl EditablePcbItem {
             Self::Track(item) => item.id(),
             Self::Arc(item) => item.id(),
             Self::Via(item) => item.id(),
-            Self::Footprint(item) => item.id(),
+            Self::FootprintInstance(item) => item.id(),
             Self::Pad(item) => item.id(),
             Self::BoardGraphicShape(item) => item.id(),
             Self::BoardText(item) => item.id(),
@@ -219,7 +218,7 @@ impl EditablePcbItem {
             Self::Track(item) => LayerSet::Single(item.layer_id()),
             Self::Arc(item) => LayerSet::Single(item.layer_id()),
             Self::Via(_) => LayerSet::Padstack,
-            Self::Footprint(item) => LayerSet::Single(item.layer_id()),
+            Self::FootprintInstance(item) => LayerSet::Single(item.layer_id()),
             Self::Pad(_) => LayerSet::Padstack,
             Self::BoardGraphicShape(item) => LayerSet::Single(item.layer_id()),
             Self::BoardText(item) => LayerSet::Single(item.layer_id()),
@@ -247,7 +246,7 @@ impl EditablePcbItem {
                 item.set_layer_id(layer_id);
                 Ok(())
             }
-            Self::Footprint(item) => {
+            Self::FootprintInstance(item) => {
                 item.set_layer_id(layer_id);
                 Ok(())
             }

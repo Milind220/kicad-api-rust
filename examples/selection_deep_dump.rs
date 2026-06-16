@@ -8,8 +8,8 @@ use std::time::Duration;
 #[cfg(feature = "blocking")]
 use kicad_ipc_rs::{
     BoardNet, KiCadClient, KiCadClientBlocking, KiCadError, PcbArc, PcbBoardGraphicShape,
-    PcbBoardText, PcbBoardTextBox, PcbDimension, PcbField, PcbFootprint, PcbGroup, PcbItem, PcbPad,
-    PcbTrack, PcbVia, PcbZone,
+    PcbBoardText, PcbBoardTextBox, PcbDimension, PcbField, PcbFootprintInstance, PcbGroup, PcbItem,
+    PcbPad, PcbTrack, PcbVia, PcbZone,
 };
 #[cfg(feature = "blocking")]
 fn retry<T, F>(label: &str, mut op: F) -> Result<T, KiCadError>
@@ -38,7 +38,7 @@ fn item_id(item: &PcbItem) -> Option<&str> {
         PcbItem::Track(v) => v.id.as_deref(),
         PcbItem::Arc(v) => v.id.as_deref(),
         PcbItem::Via(v) => v.id.as_deref(),
-        PcbItem::Footprint(v) => v.id.as_deref(),
+        PcbItem::FootprintInstance(v) => v.id.as_deref(),
         PcbItem::Pad(v) => v.id.as_deref(),
         PcbItem::BoardGraphicShape(v) => v.id.as_deref(),
         PcbItem::BoardText(v) => v.id.as_deref(),
@@ -160,7 +160,7 @@ fn print_item(item: &PcbItem) {
                 net.as_ref().map(|v| v.name.as_str()).unwrap_or("-")
             );
         }
-        PcbItem::Footprint(PcbFootprint {
+        PcbItem::FootprintInstance(PcbFootprintInstance {
             id,
             reference,
             position_nm,
@@ -388,7 +388,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut selected_footprints = Vec::new();
     for item in &selected_items {
-        if let PcbItem::Footprint(fp) = item {
+        if let PcbItem::FootprintInstance(fp) = item {
             selected_footprints.push(fp.clone());
         }
     }

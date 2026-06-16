@@ -8,7 +8,7 @@ pub enum EditablePcbItemKind {
     /// A via item.
     Via,
     /// A placed footprint instance.
-    Footprint,
+    FootprintInstance,
     /// A footprint pad.
     Pad,
     /// A board graphic shape.

@@ -631,6 +631,104 @@ pub(crate) fn map_optional_net(net: Option<board_types::Net>) -> Option<BoardNet
     })
 }
 
+pub(crate) fn map_footprint(
+    fp: Option<board_types::Footprint>,
+    decode_pcb_item: impl Fn(prost_types::Any) -> Result<PcbItem, KiCadError>,
+) -> Option<PcbFootprint> {
+    fp.map(|footprint| {
+        let reference = footprint
+            .reference_field
+            .as_ref()
+            .and_then(|field| field.text.as_ref())
+            .and_then(|board_text| board_text.text.as_ref())
+            .map(|text| text.text.clone())
+            .filter(|value| !value.is_empty());
+        let value = footprint
+            .value_field
+            .as_ref()
+            .and_then(|field| field.text.as_ref())
+            .and_then(|board_text| board_text.text.as_ref())
+            .map(|text| text.text.clone())
+            .filter(|value| !value.is_empty());
+        let datasheet = footprint
+            .datasheet_field
+            .as_ref()
+            .and_then(|field| field.text.as_ref())
+            .and_then(|board_text| board_text.text.as_ref())
+            .map(|text| text.text.clone())
+            .filter(|value| !value.is_empty());
+        let description = footprint
+            .description_field
+            .as_ref()
+            .and_then(|field| field.text.as_ref())
+            .and_then(|board_text| board_text.text.as_ref())
+            .map(|text| text.text.clone())
+            .filter(|value| !value.is_empty());
+
+        let attributes = footprint
+            .attributes
+            .map(|attribute| PcbFootprintAttributes {
+                description: attribute.description,
+                keywords: attribute.keywords,
+                not_in_schematic: attribute.not_in_schematic,
+                exclude_from_position_files: attribute.exclude_from_position_files,
+                exclude_from_bill_of_materials: attribute.exclude_from_bill_of_materials,
+                exempt_from_courtyard_requirement: attribute.exempt_from_courtyard_requirement,
+                do_not_populate: attribute.do_not_populate,
+                mounting_style: attribute.mounting_style,
+                allow_soldermask_bridges: attribute.allow_soldermask_bridges,
+            });
+        let overrides = footprint
+            .overrides
+            .map(|ovr| PcbFootprintDesignRuleOverrides {
+                solder_mask: ovr.solder_mask.map(|mask| PcbSolderMaskOverrides {
+                    solder_mask_margin_nm: map_optional_distance_nm(mask.solder_mask_margin),
+                }),
+                solder_paste: ovr.solder_paste.map(|paste| PcbSolderPasteOverrides {
+                    solder_paste_margin_nm: map_optional_distance_nm(paste.solder_paste_margin),
+                    solder_paste_margin_ratio: paste
+                        .solder_paste_margin_ratio
+                        .map(|ratio| ratio.value),
+                }),
+                copper_clearance_nm: map_optional_distance_nm(ovr.copper_clearance),
+                zone_connection: ovr.zone_connection,
+            });
+        let net_ties = footprint
+            .net_ties
+            .iter()
+            .map(|tie| tie.pad_number.clone())
+            .collect();
+        let items = footprint
+            .items
+            .iter()
+            .flat_map(|item| decode_pcb_item(item.clone()))
+            .collect();
+        let jumpers = footprint.jumpers.map(|jumper| PcbJumperSettings {
+            duplicate_names_are_jumpered: jumper.duplicate_names_are_jumpered,
+            groups: jumper
+                .groups
+                .iter()
+                .map(|group| group.pad_names.clone())
+                .collect(),
+        });
+
+        PcbFootprint {
+            id: footprint.id.as_ref().map(|id| id.entry_name.clone()),
+            anchor: footprint.anchor.map(map_vector2_nm),
+            attributes,
+            overrides,
+            net_ties,
+            private_layers: footprint.private_layers,
+            reference,
+            value,
+            datasheet,
+            description,
+            items,
+            jumpers,
+        }
+    })
+}
+
 pub(crate) fn map_padstack_presence(value: i32) -> PadstackPresenceState {
     match board_commands::PadstackPresence::try_from(value) {
         Ok(board_commands::PadstackPresence::PspPresent) => PadstackPresenceState::Present,
@@ -1100,14 +1198,136 @@ pub(crate) fn map_pad_stack(pad_stack: Option<&board_types::PadStack>) -> Option
             .collect(),
         drill: pad_stack.drill.map(map_padstack_drill),
         unconnected_layer_removal: Some(unconnected_layer_removal),
+
+        copper_layers: map_pad_stack_layers(&pad_stack.copper_layers),
+        angle: pad_stack.angle.map(|value| value.value_degrees),
+        front_outer_layers: map_pad_stack_outer_layer(pad_stack.front_outer_layers.as_ref()),
+        back_outer_layers: map_pad_stack_outer_layer(pad_stack.front_outer_layers.as_ref()),
+        zone_settings: map_zone_settings(pad_stack.zone_settings.as_ref()),
+
         copper_layer_count: pad_stack.copper_layers.len(),
         has_front_outer_layers: pad_stack.front_outer_layers.is_some(),
         has_back_outer_layers: pad_stack.back_outer_layers.is_some(),
         has_zone_settings: pad_stack.zone_settings.is_some(),
+
         secondary_drill: pad_stack.secondary_drill.map(map_padstack_drill),
         tertiary_drill: pad_stack.tertiary_drill.map(map_padstack_drill),
         has_front_post_machining: pad_stack.front_post_machining.is_some(),
         has_back_post_machining: pad_stack.back_post_machining.is_some(),
+    })
+}
+
+pub(crate) fn decode_board_graphic_shape(
+    shape: &board_types::BoardGraphicShape,
+) -> PcbBoardGraphicShape {
+    let geometry_kind = map_graphic_shape_kind(shape.shape.as_ref());
+    let geometry = map_graphic_shape_geometry(shape.shape.as_ref());
+    let stroke_width_nm = shape
+        .shape
+        .as_ref()
+        .and_then(|graphic| graphic.attributes.as_ref())
+        .and_then(|attrs| attrs.stroke.as_ref())
+        .and_then(|stroke| stroke.width)
+        .map(|width| width.value_nm);
+    let stroke_style = shape
+        .shape
+        .as_ref()
+        .and_then(|graphic| graphic.attributes.as_ref())
+        .and_then(|attrs| attrs.stroke.as_ref())
+        .map(|stroke| {
+            common_types::StrokeLineStyle::try_from(stroke.style)
+                .map(|value| value.as_str_name().to_string())
+                .unwrap_or_else(|_| format!("UNKNOWN({})", stroke.style))
+        });
+    let fill_type = shape
+        .shape
+        .as_ref()
+        .and_then(|graphic| graphic.attributes.as_ref())
+        .and_then(|attrs| attrs.fill.as_ref())
+        .map(|fill| {
+            common_types::GraphicFillType::try_from(fill.fill_type)
+                .map(|value| value.as_str_name().to_string())
+                .unwrap_or_else(|_| format!("UNKNOWN({})", fill.fill_type))
+        });
+    PcbBoardGraphicShape {
+        id: shape.id.as_ref().map(|id| id.value.clone()),
+        layer: layer_to_model(shape.layer),
+        locked: map_lock_state(shape.locked),
+        net: map_optional_net(shape.net.clone()),
+        geometry_kind,
+        geometry,
+        stroke_width_nm,
+        stroke_style,
+        fill_type,
+    }
+}
+
+pub(crate) fn map_pad_stack_layers(
+    pad_stack_layers: &[board_types::PadStackLayer],
+) -> Vec<PcbPadStackLayer> {
+    pad_stack_layers
+        .iter()
+        .map(|pad_stack_layer| PcbPadStackLayer {
+            layer: pad_stack_layer.layer,
+            shape: pad_stack_layer.shape,
+            size: pad_stack_layer.size.map(map_vector2_nm),
+            corner_rounding_ratio: pad_stack_layer.corner_rounding_ratio,
+            chamfer_ratio: pad_stack_layer.chamfer_ratio,
+            chamfered_corners: pad_stack_layer.chamfered_corners.map(|corners| {
+                PcbChamferedRectCorners {
+                    top_left: corners.top_left,
+                    top_right: corners.top_right,
+                    bottom_left: corners.bottom_left,
+                    bottom_right: corners.bottom_right,
+                }
+            }),
+            custom_shapes: pad_stack_layer
+                .custom_shapes
+                .iter()
+                .map(decode_board_graphic_shape)
+                .collect(),
+            custom_anchor_shape: pad_stack_layer.custom_anchor_shape,
+            zone_settings: map_zone_settings(pad_stack_layer.zone_settings.as_ref()),
+            trapezoid_delta: pad_stack_layer.trapezoid_delta.map(map_vector2_nm),
+            offset: pad_stack_layer.offset.map(map_vector2_nm),
+        })
+        .collect()
+}
+
+pub(crate) fn map_pad_stack_outer_layer(
+    pad_stack_outer_layer: Option<&board_types::PadStackOuterLayer>,
+) -> Option<PcbPadStackOuterLayer> {
+    pad_stack_outer_layer.map(|pad_stack_outer_layer| PcbPadStackOuterLayer {
+        solder_mask_mode: pad_stack_outer_layer.solder_mask_mode,
+        solder_paste_mode: pad_stack_outer_layer.solder_paste_mode,
+        solder_mask_settings: pad_stack_outer_layer.solder_mask_settings.map(|mask| {
+            PcbSolderMaskOverrides {
+                solder_mask_margin_nm: map_optional_distance_nm(mask.solder_mask_margin),
+            }
+        }),
+        solder_paste_settings: pad_stack_outer_layer.solder_paste_settings.map(|paste| {
+            PcbSolderPasteOverrides {
+                solder_paste_margin_nm: map_optional_distance_nm(paste.solder_paste_margin),
+                solder_paste_margin_ratio: paste.solder_paste_margin_ratio.map(|ratio| ratio.value),
+            }
+        }),
+        plugging_mode: pad_stack_outer_layer.plugging_mode,
+        covering_mode: pad_stack_outer_layer.covering_mode,
+    })
+}
+
+pub(crate) fn map_zone_settings(
+    zone_settings: Option<&board_types::ZoneConnectionSettings>,
+) -> Option<PcbZoneConnectionSettings> {
+    zone_settings.map(|zone_settings| PcbZoneConnectionSettings {
+        zone_connection: zone_settings.zone_connection,
+        thermal_spokes: zone_settings.thermal_spokes.map(|thermal_spokes| {
+            PcbThermalSpokeSettings {
+                width: map_optional_distance_nm(thermal_spokes.width),
+                angle: thermal_spokes.angle.map(|angle| angle.value_degrees),
+                gap: map_optional_distance_nm(thermal_spokes.gap),
+            }
+        }),
     })
 }
 
@@ -1161,6 +1381,18 @@ pub(crate) fn map_text_attributes(
         multiline: attributes.multiline,
         keep_upright: attributes.keep_upright,
         size_nm: attributes.size.map(map_vector2_nm),
+    })
+}
+
+pub(crate) fn map_graphic_shape_kind(shape: Option<&common_types::GraphicShape>) -> Option<String> {
+    let geometry = shape?.geometry.as_ref()?;
+    Some(match geometry {
+        common_types::graphic_shape::Geometry::Segment(_) => "SEGMENT".to_string(),
+        common_types::graphic_shape::Geometry::Rectangle(_) => "RECTANGLE".to_string(),
+        common_types::graphic_shape::Geometry::Arc(_) => "ARC".to_string(),
+        common_types::graphic_shape::Geometry::Circle(_) => "CIRCLE".to_string(),
+        common_types::graphic_shape::Geometry::Polygon(_) => "POLYGON".to_string(),
+        common_types::graphic_shape::Geometry::Bezier(_) => "BEZIER".to_string(),
     })
 }
 

@@ -354,7 +354,7 @@ pub struct PcbObjectTypeCode {
 
 impl PcbObjectTypeCode {
     /// Creates the KiCad object type code for PCB footprints.
-    pub const fn new_footprint() -> Self {
+    pub const fn new_footprint_instance() -> Self {
         Self {
             code: common_types::KiCadObjectType::KotPcbFootprint as i32,
             name: "KOT_PCB_FOOTPRINT",
@@ -706,7 +706,7 @@ mod tests {
         );
         assert_eq!(
             PcbObjectTypeCode::from_name("KOT_PCB_FOOTPRINT").map(|value| value.code),
-            Some(PcbObjectTypeCode::new_footprint().code)
+            Some(PcbObjectTypeCode::new_footprint_instance().code)
         );
     }
 }

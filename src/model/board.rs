@@ -485,7 +485,54 @@ impl BoardTextSpec {
         attributes: Option<crate::model::common::TextAttributesSpec>,
     ) -> Self {
         Self::new(text, position_nm, BoardLayer::BlFSilkS as i32, attributes)
+        // these could now be removed
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PcbPadStackLayer {
+    pub layer: i32,
+    pub shape: i32,
+    pub size: Option<Vector2Nm>,
+    pub corner_rounding_ratio: f64,
+    pub chamfer_ratio: f64,
+    pub chamfered_corners: Option<PcbChamferedRectCorners>,
+    pub custom_shapes: Vec<PcbBoardGraphicShape>,
+    pub custom_anchor_shape: i32,
+    pub zone_settings: Option<PcbZoneConnectionSettings>,
+    pub trapezoid_delta: Option<Vector2Nm>,
+    pub offset: Option<Vector2Nm>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PcbPadStackOuterLayer {
+    pub solder_mask_mode: i32,
+    pub solder_paste_mode: i32,
+    pub solder_mask_settings: Option<PcbSolderMaskOverrides>,
+    pub solder_paste_settings: Option<PcbSolderPasteOverrides>,
+    pub plugging_mode: i32,
+    pub covering_mode: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PcbChamferedRectCorners {
+    pub top_left: bool,
+    pub top_right: bool,
+    pub bottom_left: bool,
+    pub bottom_right: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PcbZoneConnectionSettings {
+    pub zone_connection: i32,
+    pub thermal_spokes: Option<PcbThermalSpokeSettings>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PcbThermalSpokeSettings {
+    pub width: Option<i64>,
+    pub angle: Option<f64>,
+    pub gap: Option<i64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -498,16 +545,25 @@ pub struct PcbPadstackDrill {
     pub filled: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PcbPadStack {
     pub stack_type: Option<String>,
     pub layers: Vec<BoardLayerInfo>,
     pub drill: Option<PcbPadstackDrill>,
     pub unconnected_layer_removal: Option<String>,
+
+    pub copper_layers: Vec<PcbPadStackLayer>,
+    pub angle: Option<f64>,
+    pub front_outer_layers: Option<PcbPadStackOuterLayer>,
+    pub back_outer_layers: Option<PcbPadStackOuterLayer>,
+    pub zone_settings: Option<PcbZoneConnectionSettings>,
+
+    // these could now be removed
     pub copper_layer_count: usize,
     pub has_front_outer_layers: bool,
     pub has_back_outer_layers: bool,
     pub has_zone_settings: bool,
+
     pub secondary_drill: Option<PcbPadstackDrill>,
     pub tertiary_drill: Option<PcbPadstackDrill>,
     pub has_front_post_machining: bool,
@@ -635,7 +691,7 @@ pub struct PcbArc {
     pub net: Option<BoardNet>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PcbVia {
     pub id: Option<String>,
     pub position_nm: Option<Vector2Nm>,
@@ -647,25 +703,87 @@ pub struct PcbVia {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct PcbFootprint {
+pub struct PcbFootprintInstance {
     pub id: Option<String>,
     pub reference: Option<String>,
     pub position_nm: Option<Vector2Nm>,
     pub orientation_deg: Option<f64>,
     pub layer: BoardLayerInfo,
     pub locked: ItemLockState,
+    pub definition: Option<PcbFootprint>,
     pub value: Option<String>,
     pub datasheet: Option<String>,
     pub description: Option<String>,
+
     pub has_attributes: bool,
     pub has_overrides: bool,
     pub has_definition: bool,
+
     pub definition_item_count: usize,
     pub symbol_link: Option<PcbFootprintSymbolLink>,
     pub pad_count: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PcbFootprintAttributes {
+    pub description: String,
+    pub keywords: String,
+    pub not_in_schematic: bool,
+    pub exclude_from_position_files: bool,
+    pub exclude_from_bill_of_materials: bool,
+    pub exempt_from_courtyard_requirement: bool,
+    pub do_not_populate: bool,
+    pub mounting_style: i32,
+    /// Since: 9.0.7
+    pub allow_soldermask_bridges: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PcbFootprintDesignRuleOverrides {
+    pub solder_mask: Option<PcbSolderMaskOverrides>,
+    pub solder_paste: Option<PcbSolderPasteOverrides>,
+    pub copper_clearance_nm: Option<i64>,
+    pub zone_connection: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PcbSolderMaskOverrides {
+    /// Solder mask expansion/contraction
+    pub solder_mask_margin_nm: Option<i64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PcbSolderPasteOverrides {
+    /// Solder paste expansion/contraction
+    pub solder_paste_margin_nm: Option<i64>,
+    /// Solder paste expansion/contraction ratio
+    pub solder_paste_margin_ratio: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PcbJumperSettings {
+    /// / If true, duplicate pad names in this footprint are jumpered together
+    pub duplicate_names_are_jumpered: bool,
+    pub groups: Vec<Vec<String>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PcbFootprint {
+    pub id: Option<String>,
+    pub anchor: Option<Vector2Nm>,
+    pub attributes: Option<PcbFootprintAttributes>,
+    pub overrides: Option<PcbFootprintDesignRuleOverrides>,
+    pub net_ties: Vec<Vec<String>>,
+    pub private_layers: Vec<i32>,
+    pub reference: Option<String>,
+    pub value: Option<String>,
+    pub datasheet: Option<String>,
+    pub description: Option<String>,
+    pub items: Vec<PcbItem>,
+    pub jumpers: Option<PcbJumperSettings>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct PcbPad {
     pub id: Option<String>,
     pub locked: ItemLockState,
@@ -834,7 +952,7 @@ pub enum PcbItem {
     Track(PcbTrack),
     Arc(PcbArc),
     Via(PcbVia),
-    Footprint(PcbFootprint),
+    FootprintInstance(PcbFootprintInstance),
     Pad(PcbPad),
     BoardGraphicShape(PcbBoardGraphicShape),
     BoardText(PcbBoardText),
