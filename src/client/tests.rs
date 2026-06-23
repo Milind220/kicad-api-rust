@@ -1,18 +1,20 @@
 use crate::error::KiCadError;
 
 use super::decode::*;
+use super::document::filter_editable_items_by_kiid;
 use super::format::*;
 use super::items::{
     bucket_items_by_pcb_object_type, deleted_item_ids_from_response, pcb_object_type_for_any,
 };
 use super::mappers::*;
 use super::{
-    envelope, is_get_open_documents_unhandled, normalize_socket_uri, project_path_from_environment,
-    resolve_current_project_path, select_single_board_document, select_single_project_path,
-    CMD_BEGIN_COMMIT, CMD_CREATE_ITEMS, CMD_DELETE_ITEMS, CMD_END_COMMIT, CMD_GET_BOARD_LAYER_NAME,
-    CMD_GET_NETS, CMD_GET_SELECTION, CMD_GET_VERSION, CMD_PING, KIPRJMOD_ENV, PCB_OBJECT_TYPES,
-    RES_BOARD_LAYER_NAME_RESPONSE, RES_CREATE_ITEMS_RESPONSE, RES_DELETE_ITEMS_RESPONSE,
-    RES_GET_NETS, RES_GET_VERSION, RES_PROTOBUF_EMPTY, RES_SELECTION_RESPONSE,
+    envelope, is_get_items_by_id_unhandled, is_get_open_documents_unhandled, normalize_socket_uri,
+    project_path_from_environment, resolve_current_project_path, select_single_board_document,
+    select_single_project_path, CMD_BEGIN_COMMIT, CMD_CREATE_ITEMS, CMD_DELETE_ITEMS,
+    CMD_END_COMMIT, CMD_GET_BOARD_LAYER_NAME, CMD_GET_NETS, CMD_GET_SELECTION, CMD_GET_VERSION,
+    CMD_PING, KIPRJMOD_ENV, PCB_OBJECT_TYPES, RES_BOARD_LAYER_NAME_RESPONSE,
+    RES_CREATE_ITEMS_RESPONSE, RES_DELETE_ITEMS_RESPONSE, RES_GET_NETS, RES_GET_VERSION,
+    RES_PROTOBUF_EMPTY, RES_SELECTION_RESPONSE,
 };
 
 #[cfg(test)]
@@ -22,6 +24,7 @@ mod tests {
         board_text_spec_to_proto, bucket_items_by_pcb_object_type, commit_action_to_proto,
         decode_pcb_item, deleted_item_ids_from_response, drc_severity_to_proto,
         ensure_item_deletion_status_ok, ensure_item_request_ok, ensure_item_status_ok,
+        filter_editable_items_by_kiid, is_get_items_by_id_unhandled,
         is_get_open_documents_unhandled, layer_to_model, map_board_stackup, map_commit_session,
         map_hit_test_result, map_item_bounding_boxes, map_merge_mode_to_proto,
         map_polygon_with_holes, map_run_action_status, model_document_to_proto,
@@ -40,6 +43,7 @@ mod tests {
         CommitAction, DocumentSpecifier, DocumentType, ProjectInfo, TextAttributesSpec,
         TextHorizontalAlignment, TextSpec, TextVerticalAlignment,
     };
+    use crate::pcb_item_type_urls;
     use prost::Message;
     use std::path::PathBuf;
     use std::sync::Mutex;
@@ -182,6 +186,130 @@ mod tests {
             message: "bad request".to_string(),
         };
         assert!(!is_get_open_documents_unhandled(&other));
+    }
+
+    #[test]
+    fn is_get_items_by_id_unhandled_matches_expected_shape() {
+        let unhandled = KiCadError::ApiStatus {
+            code: "AS_UNHANDLED".to_string(),
+            message: "no handler available for request of type kiapi.common.commands.GetItemsById"
+                .to_string(),
+        };
+        assert!(is_get_items_by_id_unhandled(&unhandled));
+
+        let other = KiCadError::ApiStatus {
+            code: "AS_BAD_REQUEST".to_string(),
+            message: "bad request".to_string(),
+        };
+        assert!(!is_get_items_by_id_unhandled(&other));
+
+        // Non-status errors must not match either, so the fallback path is
+        // never taken for transport / decode / IO failures.
+        assert!(!is_get_items_by_id_unhandled(&KiCadError::BoardNotOpen));
+        assert!(!is_get_items_by_id_unhandled(
+            &KiCadError::TransportReceive {
+                reason: "connection closed".to_string()
+            }
+        ));
+    }
+
+    #[test]
+    fn filter_editable_items_by_kiid_keeps_only_matching_items() {
+        use crate::model::editable::EditablePcbItem;
+        use crate::proto::kiapi::{board::types as board_types, common::types as common_types};
+        use prost::Message;
+        use prost_types::Any;
+
+        fn pack<T: Message>(message: &T, type_name: &str) -> Any {
+            super::envelope::pack_any(message, type_name)
+        }
+
+        fn track_with_id(id: &str) -> EditablePcbItem {
+            EditablePcbItem::from_any(pack(
+                &board_types::Track {
+                    id: Some(common_types::Kiid {
+                        value: id.to_string(),
+                    }),
+                    ..Default::default()
+                },
+                pcb_item_type_urls::TRACK,
+            ))
+            .expect("track should decode")
+        }
+
+        fn track_without_id() -> EditablePcbItem {
+            EditablePcbItem::from_any(pack(
+                &board_types::Track::default(),
+                pcb_item_type_urls::TRACK,
+            ))
+            .expect("track should decode")
+        }
+
+        let items = vec![
+            track_with_id("kiid-1"),
+            track_with_id("kiid-2"),
+            track_with_id("kiid-3"),
+            track_without_id(),
+        ];
+
+        let wanted = vec!["kiid-1".to_string(), "kiid-3".to_string()];
+        let filtered = filter_editable_items_by_kiid(items, &wanted);
+
+        let ids: Vec<&str> = filtered.iter().filter_map(|item| item.id()).collect();
+        assert_eq!(ids, vec!["kiid-1", "kiid-3"]);
+    }
+
+    #[test]
+    fn filter_editable_items_by_kiid_returns_empty_when_no_matches() {
+        use crate::model::editable::EditablePcbItem;
+        use crate::proto::kiapi::{board::types as board_types, common::types as common_types};
+        use prost::Message;
+        use prost_types::Any;
+
+        fn pack<T: Message>(message: &T, type_name: &str) -> Any {
+            super::envelope::pack_any(message, type_name)
+        }
+
+        let items = vec![EditablePcbItem::from_any(pack(
+            &board_types::Track {
+                id: Some(common_types::Kiid {
+                    value: "present".to_string(),
+                }),
+                ..Default::default()
+            },
+            pcb_item_type_urls::TRACK,
+        ))
+        .expect("track should decode")];
+
+        let wanted = vec!["missing".to_string()];
+        let filtered = filter_editable_items_by_kiid(items, &wanted);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn filter_editable_items_by_kiid_returns_empty_for_empty_wanted() {
+        use crate::model::editable::EditablePcbItem;
+        use crate::proto::kiapi::{board::types as board_types, common::types as common_types};
+        use prost::Message;
+        use prost_types::Any;
+
+        fn pack<T: Message>(message: &T, type_name: &str) -> Any {
+            super::envelope::pack_any(message, type_name)
+        }
+
+        let items = vec![EditablePcbItem::from_any(pack(
+            &board_types::Track {
+                id: Some(common_types::Kiid {
+                    value: "anything".to_string(),
+                }),
+                ..Default::default()
+            },
+            pcb_item_type_urls::TRACK,
+        ))
+        .expect("track should decode")];
+
+        let filtered = filter_editable_items_by_kiid(items, &[]);
+        assert!(filtered.is_empty());
     }
 
     #[test]
