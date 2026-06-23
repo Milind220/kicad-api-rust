@@ -581,6 +581,13 @@ pub(crate) fn is_get_open_documents_unhandled(err: &KiCadError) -> bool {
     )
 }
 
+pub(crate) fn is_get_items_by_id_unhandled(err: &KiCadError) -> bool {
+    matches!(
+        err,
+        KiCadError::ApiStatus { code, .. } if code == "AS_UNHANDLED"
+    )
+}
+
 fn resolve_socket_uri(explicit: Option<&str>) -> String {
     if let Some(socket) = explicit {
         return normalize_socket_uri(socket);
