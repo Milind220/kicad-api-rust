@@ -206,12 +206,46 @@ impl KiCadClient {
     ///
     /// This is an ergonomic wrapper around [`KiCadClient::get_items_by_id_raw`]
     /// that preserves payloads as editable items for mutate/update workflows.
+    ///
+    /// Falls back to a broader type-code fetch + client-side KIID filter when
+    /// the running KiCad reports `AS_UNHANDLED` for the `GetItemsById`
+    /// command (observed on KiCad 10.0.0 builds where the targeted lookup
+    /// handler is not registered). All other API errors propagate normally.
     pub async fn get_editable_items_by_id(
         &self,
         item_ids: Vec<String>,
     ) -> Result<Vec<EditablePcbItem>, KiCadError> {
-        let items = self.get_items_by_id_raw(item_ids).await?;
-        items.into_iter().map(EditablePcbItem::try_from).collect()
+        if item_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        match self.get_items_by_id_raw(item_ids.clone()).await {
+            Ok(items) => items.into_iter().map(EditablePcbItem::try_from).collect(),
+            Err(err) if super::is_get_items_by_id_unhandled(&err) => {
+                self.get_editable_items_by_id_via_type_codes(&item_ids)
+                    .await
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Fallback for [`KiCadClient::get_editable_items_by_id`] when the
+    /// `GetItemsById` IPC command is unavailable on the running KiCad.
+    ///
+    /// Fetches every known PCB item type via `GetItems` and filters
+    /// client-side by KIID. This path is broader than `GetItemsById`
+    /// (it traverses every item on the board) and is only used when the
+    /// targeted lookup is unsupported.
+    async fn get_editable_items_by_id_via_type_codes(
+        &self,
+        item_ids: &[String],
+    ) -> Result<Vec<EditablePcbItem>, KiCadError> {
+        let type_codes: Vec<i32> = super::PCB_OBJECT_TYPES
+            .iter()
+            .map(|object_type| object_type.code)
+            .collect();
+        let items = self.get_editable_items_by_type_codes(type_codes).await?;
+        Ok(filter_editable_items_by_kiid(items, item_ids))
     }
     /// Fetches and decodes items by KiCad item id.
     pub async fn get_items_by_id(&self, item_ids: Vec<String>) -> Result<Vec<PcbItem>, KiCadError> {
@@ -264,6 +298,22 @@ fn title_block_info_to_proto(title_block: TitleBlockInfo) -> common_types::Title
         comment8: comments.get(7).cloned().unwrap_or_default(),
         comment9: comments.get(8).cloned().unwrap_or_default(),
     }
+}
+
+/// Filters a collection of editable PCB items down to those whose KIID
+/// matches one of the supplied wanted ids.
+///
+/// Items with no KIID (e.g. `Field`, `Unknown`) are dropped. The relative
+/// order of matching items is preserved from the input vector.
+pub(crate) fn filter_editable_items_by_kiid(
+    items: Vec<EditablePcbItem>,
+    wanted_ids: &[String],
+) -> Vec<EditablePcbItem> {
+    let wanted: std::collections::HashSet<&str> = wanted_ids.iter().map(String::as_str).collect();
+    items
+        .into_iter()
+        .filter(|item| item.id().is_some_and(|id| wanted.contains(id)))
+        .collect()
 }
 
 #[cfg(test)]
