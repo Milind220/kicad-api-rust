@@ -498,11 +498,19 @@ pub struct PcbPadstackDrill {
     pub filled: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PcbPadStack {
     pub stack_type: Option<String>,
     pub layers: Vec<BoardLayerInfo>,
     pub drill: Option<PcbPadstackDrill>,
+    /// Absolute board orientation of the pad stack, in degrees.
+    ///
+    /// KiCad stores footprint children with absolute positions, so this angle
+    /// already folds in the parent footprint's rotation — no footprint lookup
+    /// is needed to place it. `None` when the pad reports no explicit
+    /// orientation. Required to machine rotated oblong/slot drills, whose
+    /// `drill.diameter` (x, y) is expressed in the pad's own, unrotated frame.
+    pub angle_degrees: Option<f64>,
     pub unconnected_layer_removal: Option<String>,
     pub copper_layer_count: usize,
     pub has_front_outer_layers: bool,
@@ -635,7 +643,7 @@ pub struct PcbArc {
     pub net: Option<BoardNet>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PcbVia {
     pub id: Option<String>,
     pub position_nm: Option<Vector2Nm>,
@@ -665,7 +673,7 @@ pub struct PcbFootprint {
     pub pad_count: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PcbPad {
     pub id: Option<String>,
     pub locked: ItemLockState,

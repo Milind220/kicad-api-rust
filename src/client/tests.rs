@@ -685,6 +685,115 @@ mod tests {
     }
 
     #[test]
+    fn decode_pcb_item_surfaces_padstack_orientation_for_an_oblong_pad() {
+        // A rotated milled slot: a 3.0 mm x 1.2 mm oblong drill on a pad rotated
+        // 37.5 degrees. KiCad reports that rotation on the pad stack
+        // (`PadStack.angle`, "the overall rotation of this padstack"); the model
+        // used to drop it. Prove it now reaches `PcbPadStack.angle_degrees`,
+        // alongside the slot dimensions and shape needed to machine it.
+        let pad = crate::proto::kiapi::board::types::Pad {
+            id: Some(crate::proto::kiapi::common::types::Kiid {
+                value: "pad-oblong".to_string(),
+            }),
+            locked: 0,
+            number: "1".to_string(),
+            net: None,
+            r#type: crate::proto::kiapi::board::types::PadType::PtNpth as i32,
+            pad_stack: Some(crate::proto::kiapi::board::types::PadStack {
+                layers: vec![crate::proto::kiapi::board::types::BoardLayer::BlFCu as i32],
+                drill: Some(crate::proto::kiapi::board::types::DrillProperties {
+                    start_layer: crate::proto::kiapi::board::types::BoardLayer::BlFCu as i32,
+                    end_layer: crate::proto::kiapi::board::types::BoardLayer::BlBCu as i32,
+                    diameter: Some(crate::proto::kiapi::common::types::Vector2 {
+                        x_nm: 3_000_000,
+                        y_nm: 1_200_000,
+                    }),
+                    shape: crate::proto::kiapi::board::types::DrillShape::DsOblong as i32,
+                    ..Default::default()
+                }),
+                angle: Some(crate::proto::kiapi::common::types::Angle {
+                    value_degrees: 37.5,
+                }),
+                ..Default::default()
+            }),
+            position: Some(crate::proto::kiapi::common::types::Vector2 {
+                x_nm: 5_000_000,
+                y_nm: 6_000_000,
+            }),
+            copper_clearance_override: None,
+            pad_to_die_length: None,
+            symbol_pin: None,
+            pad_to_die_delay: None,
+        };
+
+        let item = prost_types::Any {
+            type_url: super::envelope::type_url("kiapi.board.types.Pad"),
+            value: pad.encode_to_vec(),
+        };
+
+        let parsed = decode_pcb_item(item).expect("pad payload should decode");
+        match parsed {
+            PcbItem::Pad(pad) => {
+                let stack = pad.pad_stack.expect("pad stack should decode");
+                assert_eq!(
+                    stack.angle_degrees,
+                    Some(37.5),
+                    "pad-stack orientation must survive decoding"
+                );
+                let drill = stack.drill.expect("drill should decode");
+                let diameter = drill.diameter_nm.expect("slot diameter should decode");
+                assert_eq!((diameter.x_nm, diameter.y_nm), (3_000_000, 1_200_000));
+                assert_eq!(drill.shape.as_deref(), Some("DS_OBLONG"));
+            }
+            other => panic!("expected pad item, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_pcb_item_leaves_padstack_orientation_none_when_unset() {
+        // A plain round through-hole: no rotation reported, so the orientation
+        // stays absent rather than defaulting to zero.
+        let pad = crate::proto::kiapi::board::types::Pad {
+            id: None,
+            locked: 0,
+            number: "1".to_string(),
+            net: None,
+            r#type: crate::proto::kiapi::board::types::PadType::PtPth as i32,
+            pad_stack: Some(crate::proto::kiapi::board::types::PadStack {
+                drill: Some(crate::proto::kiapi::board::types::DrillProperties {
+                    diameter: Some(crate::proto::kiapi::common::types::Vector2 {
+                        x_nm: 800_000,
+                        y_nm: 800_000,
+                    }),
+                    shape: crate::proto::kiapi::board::types::DrillShape::DsCircle as i32,
+                    ..Default::default()
+                }),
+                angle: None,
+                ..Default::default()
+            }),
+            position: None,
+            copper_clearance_override: None,
+            pad_to_die_length: None,
+            symbol_pin: None,
+            pad_to_die_delay: None,
+        };
+
+        let item = prost_types::Any {
+            type_url: super::envelope::type_url("kiapi.board.types.Pad"),
+            value: pad.encode_to_vec(),
+        };
+
+        let parsed = decode_pcb_item(item).expect("pad payload should decode");
+        match parsed {
+            PcbItem::Pad(pad) => {
+                let stack = pad.pad_stack.expect("pad stack should decode");
+                assert_eq!(stack.angle_degrees, None);
+            }
+            other => panic!("expected pad item, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn selection_item_detail_reports_via_layers() {
         let via = crate::proto::kiapi::board::types::Via {
             id: Some(crate::proto::kiapi::common::types::Kiid {

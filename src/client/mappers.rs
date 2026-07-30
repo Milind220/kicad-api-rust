@@ -1099,6 +1099,7 @@ pub(crate) fn map_pad_stack(pad_stack: Option<&board_types::PadStack>) -> Option
             .map(layer_to_model)
             .collect(),
         drill: pad_stack.drill.map(map_padstack_drill),
+        angle_degrees: pad_stack.angle.map(|angle| angle.value_degrees),
         unconnected_layer_removal: Some(unconnected_layer_removal),
         copper_layer_count: pad_stack.copper_layers.len(),
         has_front_outer_layers: pad_stack.front_outer_layers.is_some(),
